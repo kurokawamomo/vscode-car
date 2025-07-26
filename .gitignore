@@ -1,0 +1,48 @@
+# Build output
+out/
+*.vsix
+
+# Node modules
+node_modules/
+
+# VS Code settings
+.vscode/
+
+# Logs
+*.log
+.claude-output.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+*.swp
+*.swo
+*~
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Temporary files
+tmp/
+temp/

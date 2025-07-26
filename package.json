@@ -1,0 +1,72 @@
+{
+  "name": "claude-auto-responder",
+  "displayName": "Claude Auto Responder",
+  "description": "Automatically respond to Claude CLI prompts in VS Code terminal",
+  "version": "0.1.0",
+  "publisher": "kurokawamomo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kurokawamomo/vscode-car.git"
+  },
+  "homepage": "https://github.com/kurokawamomo/vscode-car",
+  "bugs": {
+    "url": "https://github.com/kurokawamomo/vscode-car/issues"
+  },
+  "icon": "vscode-car.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:claude-auto-responder.toggle",
+    "onCommand:claude-auto-responder.sendYes",
+    "onCommand:claude-auto-responder.sendYesNoAsk",
+    "onCommand:claude-auto-responder.triggerAutoResponse",
+    "onCommand:claude-auto-responder.toggleDebug"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-auto-responder.toggle",
+        "title": "Claude Auto Mode: Toggle"
+      },
+      {
+        "command": "claude-auto-responder.sendYes",
+        "title": "Claude: Send Yes (1)"
+      },
+      {
+        "command": "claude-auto-responder.sendYesNoAsk",
+        "title": "Claude: Send Yes and Don't Ask (2)"
+      },
+      {
+        "command": "claude-auto-responder.triggerAutoResponse",
+        "title": "Claude: Trigger Auto-Response"
+      },
+      {
+        "command": "claude-auto-responder.toggleDebug",
+        "title": "Claude: Toggle Debug Mode"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claude-auto-responder.toggle",
+        "key": "alt+shift+tab",
+        "mac": "alt+shift+tab"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^4.9.4"
+  },
+  "license": "MIT"
+}
