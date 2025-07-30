@@ -11,11 +11,12 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 - Automatically detects dialogs enclosed in `╭─` boxes
 - `"Do you want to"` pattern → Sends `1` (Yes) automatically
 - `"Yes, and don't ask again this session"` pattern → Sends `2` automatically
-- 5-second wait period allows for manual intervention
+- **⚠️ Important**: Wait time may vary (not exactly 5 seconds) depending on system performance
 
-### 🛡️ Safety Features
+### 🛡️ Safety Features  
 - **Destructive Command Detection**: Detects `rm -rf`, fork bombs, database operations, etc. and cancels auto-response
-- **Manual Confirmation**: Warns users when dangerous commands are detected
+- **VS Code Notification**: Shows warning notification (not modal popup) when dangerous commands are detected
+- **⚠️ Experimental**: This extension is in early development and may be unstable
 
 ### 🎨 User Interface
 - **Animated Status Bar**: 
@@ -26,14 +27,16 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 ### ⚡ System Integration
 - **Sleep Prevention**: Prevents automatic sleep during Auto Mode
   - macOS: `caffeinate`
-  - Windows: `powercfg`
+  - Windows: `powercfg` 
   - Linux: `systemd-inhibit` / `xset`
+- **Node Version Management**: Ignores local `nodenv`, `nvm`, etc. and uses global Node.js version
 
 ## 📦 Installation
 
 ### Prerequisites
 - VS Code 1.74.0 or higher
 - Claude CLI (`claude --continue` command available)
+- **⚠️ Important**: Claude CLI must be started via `script` command for terminal monitoring to work
 
 ### Installation Steps
 1. Clone this repository
@@ -52,7 +55,8 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 
 2. **Start Claude CLI**
    - Auto-start option appears when Auto Mode is enabled
-   - Or manually start via `Ctrl+Shift+P` → commands
+   - Or manually start via `Ctrl+Shift+P` → `Claude Auto Responder: Start Claude Terminal`
+   - **⚠️ Requirement**: Must use the extension's command to start Claude for monitoring to work
 
 3. **Automatic Response**
    - When a dialog appears, automatically waits 5 seconds
@@ -62,30 +66,32 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 ### Manual Trigger
 
 If automatic detection doesn't work:
-- `Ctrl+Shift+P` → `Claude: Trigger Auto-Response`
+- `Ctrl+Shift+P` → `Claude Auto Responder: Trigger Auto-Response`
 - Copy dialog text for analysis
 
 ## 🎛️ Command Reference
 
 | Command | Description | Shortcut |
 |---------|-------------|----------|
-| `Claude Auto Mode: Toggle` | Toggle Auto Mode on/off | `Option+Shift+Tab` |
-| `Claude: Send Yes (1)` | Manually send "1" | - |
-| `Claude: Send Yes and Don't Ask (2)` | Manually send "2" | - |
-| `Claude: Trigger Auto-Response` | Manually trigger dialog detection | - |
-| `Claude: Toggle Debug Mode` | Toggle debug mode | - |
+| `Claude Auto Responder: Toggle Auto Mode` | Toggle Auto Mode on/off | `Option+Shift+Tab` |
+| `Claude Auto Responder: Start Claude Terminal` | Start Claude CLI with monitoring | - |
+| `Claude Auto Responder: Send Yes (1)` | Manually send "1" | - |
+| `Claude Auto Responder: Send Yes and Don't Ask (2)` | Manually send "2" | - |
+| `Claude Auto Responder: Trigger Auto-Response` | Manually trigger dialog detection | - |
+| `Claude Auto Responder: Toggle Debug Mode` | Toggle debug mode | - |
 
 ## ⚙️ Configuration
 
 ### Debug Mode
 For detailed log output:
-- `Ctrl+Shift+P` → `Claude: Toggle Debug Mode`
+- `Ctrl+Shift+P` → `Claude Auto Responder: Toggle Debug Mode`
 - Check logs in VS Code's "Output" → "Extension Host"
 
 ### Log Files
 Terminal output is recorded in:
-- Workspace: `.claude-output.log`
+- Workspace: `.claude-output.log` (auto-rotates at 100 lines)
 - Fallback: `/tmp/claude-output-[timestamp].log`
+- **Note**: Files are automatically cleaned up when extension deactivates
 
 ## 🔧 Technical Specifications
 
@@ -120,18 +126,19 @@ Terminal output is recorded in:
 ### Auto-detection Not Working
 1. Enable Debug Mode and check logs
 2. Verify `.claude-output.log` file is created
-3. Try manual trigger (`Claude: Trigger Auto-Response`)
+3. Try manual trigger (`Claude Auto Responder: Trigger Auto-Response`)
+4. **Important**: Ensure Claude was started via extension command, not manually
 
 ### Dialog Not Recognized
 1. Copy dialog text
-2. Use `Claude: Trigger Auto-Response` → `Analyze` for manual analysis
+2. Use `Claude Auto Responder: Trigger Auto-Response` → `Analyze` for manual analysis
 
 ## 🔒 Security
 
 ### Destructive Command Protection
 - Cancels auto-response for proposals containing dangerous commands
-- Shows modal warning to user
-- Requires manual confirmation
+- Shows VS Code warning notification (not modal popup)
+- Requires manual confirmation for safety
 
 ### Privacy
 - Terminal output saved only to local files

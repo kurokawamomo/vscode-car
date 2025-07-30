@@ -274,17 +274,21 @@ function startClaude() {
     terminal.show();
     
     // Start Claude with output logging
-    // Use different approach based on OS
+    // Use different approach based on OS and ignore local node version managers
     const os = require('os');
+    
+    // Set PATH to prioritize global node version and ignore local version managers
+    const globalNodeSetup = 'export NODENV_VERSION="" NODEENV_VERSION="" NVM_DIR="" NODE_VERSION_PREFIX=""';
+    
     if (os.platform() === 'darwin') {
-      // macOS: use script command
-      terminal.sendText(`script -q "${outputLogPath}" claude --continue`);
+      // macOS: use script command with global node setup
+      terminal.sendText(`${globalNodeSetup} && script -q "${outputLogPath}" claude --continue`);
     } else if (os.platform() === 'win32') {
       // Windows: use PowerShell with Tee-Object for logging
-      terminal.sendText(`claude --continue | Tee-Object -FilePath "${outputLogPath}"`);
+      terminal.sendText(`$env:NODENV_VERSION=""; $env:NODE_VERSION_PREFIX=""; claude --continue | Tee-Object -FilePath "${outputLogPath}"`);
     } else {
-      // Linux: use script command with different syntax
-      terminal.sendText(`script -q -c "claude --continue" "${outputLogPath}"`);
+      // Linux: use script command with different syntax and global node setup
+      terminal.sendText(`${globalNodeSetup} && script -q -c "claude --continue" "${outputLogPath}"`);
     }
     
     // Start file monitoring
@@ -437,8 +441,10 @@ async function readAndAnalyzeLogFile() {
       return;
     }
     
-    // Keep only last 5000 characters to manage file size
-    const trimmedContent = content.slice(-5000);
+    // Keep only last 100 lines to manage file size
+    const lines = content.split('\n');
+    const trimmedLines = lines.slice(-100);
+    const trimmedContent = trimmedLines.join('\n');
     
     debugLog('Read log file content length:', content.length);
     debugLog('Last 200 chars:', JSON.stringify(trimmedContent.slice(-200)));
@@ -446,6 +452,17 @@ async function readAndAnalyzeLogFile() {
     // Only process if content has changed
     if (trimmedContent !== outputBuffer) {
       outputBuffer = trimmedContent;
+      
+      // If original content was more than 100 lines, rotate the log file
+      if (lines.length > 100) {
+        try {
+          fs.writeFileSync(outputLogPath, trimmedContent, 'utf8');
+          debugLog('Rotated log file to keep last 100 lines');
+        } catch (error) {
+          debugLog('Failed to rotate log file:', error);
+        }
+      }
+      
       checkForPrompts(''); // Trigger pattern check
     }
     
@@ -531,8 +548,7 @@ function analyzeDialogPattern(content: string): string | null {
   // Check for destructive commands first
   if (hasDestructiveCommand(content)) {
     vscode.window.showWarningMessage(
-      'Destructive command detected! Auto-response cancelled.',
-      { modal: true }
+      '⚠️ Destructive command detected! Auto-response cancelled.'
     );
     return null;
   }
@@ -662,8 +678,7 @@ function checkForAutoResponse() {
     // Check for destructive commands first
     if (hasDestructiveCommand(outputBuffer)) {
       vscode.window.showWarningMessage(
-        'Destructive command detected! Auto-response cancelled. Please review the proposal manually.',
-        { modal: true }
+        '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
       );
       clearState();
       return;
@@ -682,8 +697,7 @@ function checkForAutoResponse() {
     // Check for destructive commands first
     if (hasDestructiveCommand(outputBuffer)) {
       vscode.window.showWarningMessage(
-        'Destructive command detected! Auto-response cancelled. Please review the proposal manually.',
-        { modal: true }
+        '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
       );
       clearState();
       return;
