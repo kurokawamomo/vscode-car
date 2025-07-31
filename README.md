@@ -33,12 +33,19 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 
 ## 📦 Installation
 
+### From VS Code Marketplace
+Install directly from the VS Code Marketplace:
+
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/kurokawamomo.claude-auto-responder)](https://marketplace.visualstudio.com/items?itemName=kurokawamomo.claude-auto-responder)
+
+**[Install from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kurokawamomo.claude-auto-responder)**
+
 ### Prerequisites
 - VS Code 1.74.0 or higher
 - Claude CLI (`claude --continue` command available)
 - **⚠️ Important**: Claude CLI must be started via `script` command for terminal monitoring to work
 
-### Installation Steps
+### Development Installation
 1. Clone this repository
 2. Open in VS Code
 3. Press F5 to launch debug mode

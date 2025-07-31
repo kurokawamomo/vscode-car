@@ -13,6 +13,7 @@ let pendingTimeout: NodeJS.Timeout | null = null;
 let lastAutoResponse: number = 0;
 let statusAnimationInterval: NodeJS.Timeout | null = null;
 let waitAnimationInterval: NodeJS.Timeout | null = null;
+let countdownInterval: NodeJS.Timeout | null = null;
 let animationFrame: number = 0;
 let outputLogPath: string = '';
 let fileWatcher: vscode.FileSystemWatcher | null = null;
@@ -28,6 +29,16 @@ function debugLog(message: string, ...args: any[]) {
 
 function errorLog(message: string, ...args: any[]) {
   console.error(`[Claude Auto Error] ${message}`, ...args);
+}
+
+function getConfiguration() {
+  const config = vscode.workspace.getConfiguration('claudeAutoResponder');
+  return {
+    enableShiftTabSkip: config.get<boolean>('enableShiftTabSkip', false),
+    logSkippedQuestions: config.get<boolean>('logSkippedQuestions', true),
+    ignoreDestructiveCommandsDetection: config.get<boolean>('ignoreDestructiveCommandsDetection', false),
+    customBlacklist: config.get<string[]>('customBlacklist', [])
+  };
 }
 
 export function activate(ext: vscode.ExtensionContext) {
@@ -187,19 +198,19 @@ function stopSleepPrevention() {
 }
 
 function updateStatusBar() {
-  const terminalStatus = terminal ? ' (Running)' : '';
-  
   if (isAutoModeEnabled) {
-    startStatusAnimation();
-    statusBarItem.tooltip = `Claude Auto Mode: ON${terminalStatus} (Click to toggle)`;
+    if (terminal) {
+      startStatusAnimation();
+      statusBarItem.tooltip = `Claude Auto Mode: ON (Running) (Click to toggle)`;
+    } else {
+      stopStatusAnimation();
+      statusBarItem.text = `[⇉] Click to Start Claude Terminal`;
+      statusBarItem.tooltip = `Claude Auto Mode: ON (No terminal) - Click to start Claude CLI`;
+    }
   } else {
     stopStatusAnimation();
-    if (terminal) {
-      statusBarItem.text = `[✽] ${terminalStatus}`;
-    } else {
-      statusBarItem.text = `[⇉] Click to Start Claude Terminal`;
-    }
-    statusBarItem.tooltip = `Claude Auto Mode: OFF${terminalStatus} (Click to toggle)`;
+    statusBarItem.text = `[✽] Click to Start Claude Terminal`;
+    statusBarItem.tooltip = `Claude Auto Mode: OFF - Click to start Claude CLI`;
   }
 }
 
@@ -263,10 +274,14 @@ function startWaitAnimation() {
   }, 100); // Faster animation (100ms instead of 200ms)
   
   // Countdown timer (every second)
-  const countdownInterval = setInterval(() => {
+  countdownInterval = setInterval(() => {
     countdown--;
     if (countdown <= 0) {
-      clearInterval(countdownInterval);
+      countdown = 0; // Ensure it doesn't go negative
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
     }
   }, 1000);
 }
@@ -275,6 +290,11 @@ function stopWaitAnimation() {
   if (waitAnimationInterval) {
     clearInterval(waitAnimationInterval);
     waitAnimationInterval = null;
+  }
+  
+  if (countdownInterval) {
+    clearInterval(countdownInterval as NodeJS.Timeout);
+    countdownInterval = null;
   }
   
   isWaitingForDialog = false;
@@ -672,6 +692,10 @@ function sendResponse(response: string) {
   if (targetTerminal) {
     console.log(`Sending "${response}" to terminal: ${targetTerminal.name}`);
     
+    // Log the manual response action
+    const responseType = response === '1' ? 'Yes (1)' : response === '2' ? 'Yes, and don\'t ask again (2)' : response;
+    logSkippedQuestion(outputBuffer, `Manual response: ${responseType}`);
+    
     // Use the working method: Send as individual keystrokes
     response.split('').forEach((char, index) => {
       setTimeout(() => {
@@ -743,11 +767,12 @@ function checkForPrompts(output: string) {
 function checkForAutoResponse() {
   console.log('Checking for auto-response after 5-second wait...');
   
-  // Stop wait animation
+  // Stop wait animation first
   stopWaitAnimation();
   
   if (!isAutoModeEnabled || !terminal) {
     console.log('Auto mode disabled or no terminal');
+    clearState();
     return;
   }
 
@@ -759,17 +784,34 @@ function checkForAutoResponse() {
     console.log('Found "Do you want to" pattern, sending response "1"');
     
     // Check for destructive commands first
-    if (hasDestructiveCommand(outputBuffer)) {
-      vscode.window.showWarningMessage(
-        '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
-      );
-      clearState();
-      return;
+    const config = getConfiguration();
+    if (hasDestructiveCommand(outputBuffer, config)) {
+      if (config.ignoreDestructiveCommandsDetection) {
+        vscode.window.showWarningMessage(
+          '⚠️ Destructive command detected but ignored by settings! Proceeding with auto-response.'
+        );
+        // Log the skipped question if enabled
+        if (config.logSkippedQuestions) {
+          logSkippedQuestion(outputBuffer, 'Destructive command ignored');
+        }
+      } else {
+        vscode.window.showWarningMessage(
+          '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
+        );
+        // Clear only the timeout, not the entire state
+        if (pendingTimeout) {
+          clearTimeout(pendingTimeout);
+          pendingTimeout = null;
+        }
+        return;
+      }
     }
+    
+    // Clear state before sending response
+    clearState();
     
     // Use the working low-level input method
     autoSendResponse('1');
-    clearState();
     return;
   }
   
@@ -778,27 +820,52 @@ function checkForAutoResponse() {
     console.log('Found "don\'t ask again" pattern, sending response "2"');
     
     // Check for destructive commands first
-    if (hasDestructiveCommand(outputBuffer)) {
-      vscode.window.showWarningMessage(
-        '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
-      );
-      clearState();
-      return;
+    const config = getConfiguration();
+    if (hasDestructiveCommand(outputBuffer, config)) {
+      if (config.ignoreDestructiveCommandsDetection) {
+        vscode.window.showWarningMessage(
+          '⚠️ Destructive command detected but ignored by settings! Proceeding with auto-response.'
+        );
+        // Log the skipped question if enabled
+        if (config.logSkippedQuestions) {
+          logSkippedQuestion(outputBuffer, 'Destructive command ignored');
+        }
+      } else {
+        vscode.window.showWarningMessage(
+          '⚠️ Destructive command detected! Auto-response cancelled. Please review the proposal manually.'
+        );
+        // Clear only the timeout, not the entire state
+        if (pendingTimeout) {
+          clearTimeout(pendingTimeout);
+          pendingTimeout = null;
+        }
+        return;
+      }
     }
+    
+    // Clear state before sending response
+    clearState();
     
     // Use the working low-level input method
     autoSendResponse('2');
-    clearState();
     return;
   }
   
   console.log('No recognized prompt pattern found in buffer');
+  console.log('Buffer content (first 200 chars):', outputBuffer.substring(0, 200));
+  
+  // Clear state even if no pattern found to prevent stuck animations
+  clearState();
 }
 
 function autoSendResponse(response: string) {
   if (!terminal) return;
   
   console.log(`Auto-sending response: ${response}`);
+  
+  // Log the auto-response action
+  const responseType = response === '1' ? 'Yes (1)' : response === '2' ? 'Yes, and don\'t ask again (2)' : response;
+  logSkippedQuestion(outputBuffer, `Auto-response: ${responseType}`);
   
   // Use the working method: Send as individual keystrokes
   response.split('').forEach((char, index) => {
@@ -816,7 +883,31 @@ function autoSendResponse(response: string) {
   vscode.window.showInformationMessage(`Auto-response sent: ${response}`);
 }
 
-function hasDestructiveCommand(text: string): boolean {
+function logSkippedQuestion(questionText: string, reason: string) {
+  const config = getConfiguration();
+  if (!config.logSkippedQuestions) {
+    return;
+  }
+  
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.tmpdir();
+    const logPath = path.join(workspaceFolder, '.claude-skipped-questions.log');
+    
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${reason}\n${questionText}\n${'='.repeat(80)}\n\n`;
+    
+    fs.appendFileSync(logPath, logEntry, 'utf8');
+    debugLog('Logged skipped question to:', logPath);
+  } catch (error) {
+    debugLog('Failed to log skipped question:', error);
+  }
+}
+
+function hasDestructiveCommand(text: string, config?: { customBlacklist?: string[] }): boolean {
   const destructivePatterns = [
     // File system operations
     /rm\s+-rf/i,
@@ -850,7 +941,27 @@ function hasDestructiveCommand(text: string): boolean {
     /createdb\s+.*--template.*template0/i
   ];
   
-  return destructivePatterns.some(pattern => pattern.test(text));
+  // Check built-in patterns
+  const hasBuiltInPattern = destructivePatterns.some(pattern => pattern.test(text));
+  
+  // Check custom blacklist patterns
+  if (config?.customBlacklist) {
+    const hasCustomPattern = config.customBlacklist.some(patternStr => {
+      try {
+        const pattern = new RegExp(patternStr, 'i');
+        return pattern.test(text);
+      } catch (error) {
+        debugLog('Invalid regex pattern in custom blacklist:', patternStr, error);
+        return false;
+      }
+    });
+    
+    if (hasCustomPattern) {
+      return true;
+    }
+  }
+  
+  return hasBuiltInPattern;
 }
 
 function cleanupTerminal() {

@@ -2,6 +2,52 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.4.0] - 2025-07-26
+
+### 🎯 Major Features
+
+- **VS Code Settings Integration**: Added comprehensive settings panel accessible via `Ctrl+,` → "Claude Auto Responder"
+- **Comprehensive Action Logging**: All responses (auto and manual) are now logged to `.claude-skipped-questions.log` with timestamps
+- **Shift+Tab Quick Skip**: Optional hotkey to instantly send "Yes, and don't ask again" (configurable in settings)
+
+
+### ⚙️ New Settings
+- `enableShiftTabSkip`: Enable Shift+Tab to skip confirmation dialogs
+- `logSkippedQuestions`: Log all actions to file (default: ON)
+- `ignoreDestructiveCommandsDetection`: Override destructive command warnings (shows warning)
+- `customBlacklist`: Custom regex patterns to block auto-response
+
+### 🔧 Improved
+- **Status Bar Enhancements**:
+  - Fast countdown animation: `$(alert) [⇉  ] Wait 5s` → `Wait 4s` → ... → `Wait 0s`
+  - Smart terminal status: `[⇉] Click to Start Claude Terminal` when no terminal
+  - Simplified disabled mode: `[✽] Click to Start Claude Terminal`
+- **Wait Animation Fixes**: Resolved "Wait 0s" stuck animation issues
+- **Terminal Management**: Clicking status bar when no terminal automatically starts Claude CLI
+
+### 🛡️ Safety & Logging
+- **Audit Trail**: Complete log of all automated decisions for transparency
+- **Destructive Command Override**: Option to proceed with warnings for advanced users
+- **Custom Pattern Blocking**: User-defined regex patterns for additional safety
+- **Enhanced Logging**: Records question content, response type, and timestamp
+
+### 🐛 Fixed
+- **Animation Persistence**: Wait countdown properly stops after completion
+- **Response Execution**: Ensures "Send Yes: 1" always executes after countdown
+- **State Management**: Auto Mode toggling no longer breaks ongoing operations
+- **Terminal State**: Proper cleanup when terminals are manually closed
+
+### 📋 Logging Examples
+```
+[2025-07-26T10:30:15.123Z] Auto-response: Yes (1)
+[Question content here]
+================================================================================
+
+[2025-07-26T10:35:22.456Z] Manual response: Yes, and don't ask again (2)
+[Question content here]
+================================================================================
+```
+
 ## [0.3.0] - 2025-07-27
 
 ### 🔧 Improved
