@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
+import { debug } from 'console';
 
 let statusBarItem: vscode.StatusBarItem;
 let isAutoModeEnabled: boolean = false;
@@ -100,11 +101,17 @@ function toggleAutoMode() {
   const status = isAutoModeEnabled ? 'enabled' : 'disabled';
   vscode.window.showInformationMessage(`Claude Auto Mode ${status}`);
   
+  debugLog(`Claude Auto Mode: ${status}, #{outputLogPath: ${outputLogPath}, terminal: ${terminal ? terminal.name : 'none'}`);
   // Enable/disable sleep prevention
+  // If auto mode is enabled but no terminal exists, start terminal instead of toggling
   if (isAutoModeEnabled) {
     startSleepPrevention();
     
-    // If enabling and Claude isn't running, offer to start it
+    // Reload log file if auto mode is resumed
+    if (outputLogPath) {
+      startFileMonitoring();
+    }
+
     if (!terminal) {
       vscode.window.showInformationMessage(
         'Would you like to start Claude CLI?',
@@ -187,7 +194,11 @@ function updateStatusBar() {
     statusBarItem.tooltip = `Claude Auto Mode: ON${terminalStatus} (Click to toggle)`;
   } else {
     stopStatusAnimation();
-    statusBarItem.text = `[✽] ${terminalStatus}`;
+    if (terminal) {
+      statusBarItem.text = `[✽] ${terminalStatus}`;
+    } else {
+      statusBarItem.text = `[⇉] Click to Start Claude Terminal`;
+    }
     statusBarItem.tooltip = `Claude Auto Mode: OFF${terminalStatus} (Click to toggle)`;
   }
 }
@@ -226,19 +237,38 @@ function startWaitAnimation() {
   isWaitingForDialog = true;
   stopStatusAnimation(); // Stop normal animation
   
+  let countdown = 5;
+  let waitFrame = 0;
+  
   const frames = [
-    `[⇉  ] Wait to Proceed!`,
-    `[ ⇉ ] Wait to Proceed!`,
-    `[  ⇉] Wait to Proceed!`
+    `$(alert) [⇉  ] Wait ${countdown}s`,
+    `$(alert) [ ⇉ ] Wait ${countdown}s`,
+    `$(alert) [  ⇉] Wait ${countdown}s`
   ];
   
-  let waitFrame = 0;
   statusBarItem.text = frames[waitFrame];
   
+  // Fast animation with countdown
   waitAnimationInterval = setInterval(() => {
     waitFrame = (waitFrame + 1) % frames.length;
-    statusBarItem.text = frames[waitFrame];
-  }, 200);
+    
+    // Update frames with current countdown
+    const updatedFrames = [
+      `$(alert) [⇉  ] Wait ${countdown}s`,
+      `$(alert) [ ⇉ ] Wait ${countdown}s`,
+      `$(alert) [  ⇉] Wait ${countdown}s`
+    ];
+    
+    statusBarItem.text = updatedFrames[waitFrame];
+  }, 100); // Faster animation (100ms instead of 200ms)
+  
+  // Countdown timer (every second)
+  const countdownInterval = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      clearInterval(countdownInterval);
+    }
+  }, 1000);
 }
 
 function stopWaitAnimation() {
@@ -256,9 +286,34 @@ function stopWaitAnimation() {
 }
 
 function startClaude() {
+  // If terminal already exists, stop current monitoring and restart
   if (terminal) {
-    vscode.window.showInformationMessage('Claude terminal is already running');
-    return;
+    vscode.window.showInformationMessage('Stopping existing Claude terminal and starting new one...');
+    
+    // Stop existing monitoring
+    if (fileWatcher) {
+      fileWatcher.dispose();
+      fileWatcher = null;
+    }
+    
+    // Cleanup existing log file
+    if (outputLogPath) {
+      try {
+        const fs = require('fs');
+        if (fs.existsSync(outputLogPath)) {
+          fs.unlinkSync(outputLogPath);
+        }
+      } catch (error) {
+        debugLog('Could not clean up existing log file:', error);
+      }
+    }
+    
+    // Dispose existing terminal
+    terminal.dispose();
+    terminal = null;
+    
+    // Clear state
+    clearState();
   }
 
   try {
@@ -272,6 +327,34 @@ function startClaude() {
     });
     
     terminal.show();
+    
+    // Listen for terminal close events to clear the terminal reference
+    const terminalCloseDisposable = vscode.window.onDidCloseTerminal((closedTerminal) => {
+      if (closedTerminal === terminal) {
+        console.log('Claude terminal was closed, clearing reference');
+        cleanupTerminal();
+      }
+    });
+    
+    // Add to subscriptions so it gets disposed when extension deactivates
+    context.subscriptions.push(terminalCloseDisposable);
+    
+    // Also check terminal status periodically as backup
+    const terminalCheckInterval = setInterval(() => {
+      if (terminal) {
+        // Check if terminal still exists in the active terminals
+        const activeTerminals = vscode.window.terminals;
+        const terminalExists = activeTerminals.some(t => t === terminal);
+        
+        if (!terminalExists) {
+          console.log('Claude terminal no longer exists, cleaning up');
+          clearInterval(terminalCheckInterval);
+          cleanupTerminal();
+        }
+      } else {
+        clearInterval(terminalCheckInterval);
+      }
+    }, 2000); // Check every 2 seconds
     
     // Start Claude with output logging
     // Use different approach based on OS and ignore local node version managers
@@ -297,7 +380,7 @@ function startClaude() {
     // Update status bar
     updateStatusBar();
 
-    vscode.window.showInformationMessage('Started Claude CLI with file-based auto-monitoring.');
+    vscode.window.showInformationMessage('✅ Started new Claude CLI terminal with auto-monitoring enabled.');
     
   } catch (error) {
     console.error('Failed to start Claude:', error);
@@ -641,16 +724,16 @@ function checkForPrompts(output: string) {
       // Start wait animation only for actionable dialogs
       startWaitAnimation();
       
-      // Clear any existing timeout
-      if (pendingTimeout) {
-        clearTimeout(pendingTimeout);
-        pendingTimeout = null;
+      // Only set timeout if there isn't one already pending
+      if (!pendingTimeout) {
+        console.log('Setting 5-second timeout for auto-response...');
+        // Set timeout to check for auto-response after 5 seconds
+        pendingTimeout = setTimeout(() => {
+          checkForAutoResponse();
+        }, 5000);
+      } else {
+        console.log('Timeout already pending, not setting new one');
       }
-      
-      // Set timeout to check for auto-response after 5 seconds
-      pendingTimeout = setTimeout(() => {
-        checkForAutoResponse();
-      }, 5000);
     } else {
       console.log('Box pattern found but no actionable dialog detected');
     }
@@ -768,6 +851,27 @@ function hasDestructiveCommand(text: string): boolean {
   ];
   
   return destructivePatterns.some(pattern => pattern.test(text));
+}
+
+function cleanupTerminal() {
+  console.log('Cleaning up Claude terminal');
+  
+  // Show notification that terminal was stopped
+  vscode.window.showInformationMessage('🔴 Claude CLI terminal monitoring stopped.');
+  
+  terminal = null;
+  
+  // Stop file monitoring when terminal is closed
+  if (fileWatcher) {
+    fileWatcher.dispose();
+    fileWatcher = null;
+  }
+  
+  // Update status bar (keep Auto Mode setting unchanged)
+  updateStatusBar();
+  
+  // Clear state
+  clearState();
 }
 
 function clearState() {

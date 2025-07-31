@@ -2,6 +2,22 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.3.0] - 2025-07-27
+
+### 🔧 Improved
+- **Status Bar Animation**: Enhanced animations for Auto Mode and wait periods:
+  - `[⇉  ] Claude Auto` for normal operation.
+  - `$(alert) [⇉  ] Wait Xs` during 5-second wait for dialog responses.
+- **Log File Management**: Improved `.claude-output.log` handling:
+  - Automatically rotates to keep only the last 100 lines.
+  - Ensures log file is hidden on Windows.
+- **Terminal Cleanup**: Automatically cleans up terminal and log files when Auto Mode is disabled or terminal is closed.
+
+### 🐛 Fixed
+- **Terminal Monitoring**: Resolved issues with terminal monitoring when switching between terminals.
+- **File Monitoring**: Fixed edge cases where `.claude-output.log` changes were not detected in real-time.
+- **Windows Compatibility**: Addressed issues with hidden file attributes and PowerShell command execution.
+
 ## [0.2.0] - 2025-07-26
 
 ### 🔧 Improved
