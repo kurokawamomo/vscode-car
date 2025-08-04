@@ -519,7 +519,7 @@ function startFileMonitoring() {
       }
     }, 2000); // Check every 2 seconds
 
-    // Set up periodic terminal buffer refresh with arrow down key (every 30 seconds)
+    // Set up periodic terminal buffer refresh with arrow down key (every 60 seconds)
     const terminalRefreshInterval = setInterval(() => {
       const config = getConfiguration();
       if (isAutoModeEnabled && terminal && config.enableTerminalBufferRefresh) {
@@ -528,7 +528,7 @@ function startFileMonitoring() {
       } else if (!isAutoModeEnabled) {
         clearInterval(terminalRefreshInterval);
       }
-    }, 3000); // Every 30 seconds
+    }, 60000); // Every 60 seconds
   } catch (error) {
     console.error('Error starting file monitoring:', error);
   }

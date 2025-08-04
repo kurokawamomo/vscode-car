@@ -2,6 +2,24 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.5.0] - 2025-08-04
+
+### ✨ Added
+- **Terminal Buffer Refresh**: Added periodic arrow down key to refresh terminal buffer every 60 seconds
+- **Configurable Buffer Refresh**: New VS Code setting `enableTerminalBufferRefresh` to control terminal buffer refresh (default: ON)
+
+### 🔧 Improved
+- **Log Update Performance**: Resolves `script -q` log file update delays by periodically triggering terminal display updates
+- **Settings Flexibility**: Users can disable terminal buffer refresh if not needed in their environment
+
+### ⚙️ New Settings
+- `enableTerminalBufferRefresh`: Enable periodic arrow down key to refresh terminal buffer every 60 seconds
+
+### 🛠️ Technical
+- Terminal buffer refresh helps ensure `script -q` command properly updates log files in real-time
+- Uses `\u001b[B` (arrow down) escape sequence that doesn't interfere with Claude CLI input
+- Configurable via VS Code settings panel under "Claude Auto Responder"
+
 ## [0.4.0] - 2025-07-26
 
 ### 🎯 Major Features

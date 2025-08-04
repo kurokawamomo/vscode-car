@@ -89,6 +89,11 @@ If automatic detection doesn't work:
 
 ## ⚙️ Configuration
 
+### VS Code Settings
+Access via `Ctrl+,` → Search "Claude Auto Responder":
+
+- `enableTerminalBufferRefresh` (default: ON): Periodically refresh terminal buffer with arrow down key every 60 seconds to ensure `script -q` log updates work properly
+
 ### Debug Mode
 For detailed log output:
 - `Ctrl+Shift+P` → `Claude Auto Responder: Toggle Debug Mode`
