@@ -37,7 +37,8 @@ function getConfiguration() {
     enableShiftTabSkip: config.get<boolean>('enableShiftTabSkip', false),
     logSkippedQuestions: config.get<boolean>('logSkippedQuestions', true),
     ignoreDestructiveCommandsDetection: config.get<boolean>('ignoreDestructiveCommandsDetection', false),
-    customBlacklist: config.get<string[]>('customBlacklist', [])
+    customBlacklist: config.get<string[]>('customBlacklist', []),
+    enableTerminalBufferRefresh: config.get<boolean>('enableTerminalBufferRefresh', true)
   };
 }
 
@@ -517,7 +518,17 @@ function startFileMonitoring() {
         clearInterval(checkInterval);
       }
     }, 2000); // Check every 2 seconds
-    
+
+    // Set up periodic terminal buffer refresh with arrow down key (every 30 seconds)
+    const terminalRefreshInterval = setInterval(() => {
+      const config = getConfiguration();
+      if (isAutoModeEnabled && terminal && config.enableTerminalBufferRefresh) {
+        debugLog('Sending arrow down key to refresh terminal buffer');
+        terminal.sendText('\u001b[B', false); // Arrow down key
+      } else if (!isAutoModeEnabled) {
+        clearInterval(terminalRefreshInterval);
+      }
+    }, 3000); // Every 30 seconds
   } catch (error) {
     console.error('Error starting file monitoring:', error);
   }
