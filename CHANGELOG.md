@@ -2,6 +2,21 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.6.0] - 2025-08-04
+
+### ✨ Added
+- **Smart Claude CLI Startup**: Automatically falls back to `claude` command when `claude --continue` fails with "No conversation found to continue"
+- **Cross-Platform Fallback**: Works on macOS, Windows, and Linux with platform-specific shell commands
+
+### 🔧 Improved
+- **Seamless First Run**: No manual intervention needed when starting Claude CLI for the first time
+- **Robust Startup Logic**: Uses `claude --continue || claude` pattern to handle both scenarios gracefully
+
+### 🛠️ Technical
+- **macOS/Linux**: Uses `bash -c "claude --continue || claude"` with script command
+- **Windows**: Uses PowerShell `(claude --continue; if (!$?) { claude })` syntax
+- **Error Handling**: Graceful fallback when no previous conversation exists
+
 ## [0.5.0] - 2025-08-04
 
 ### ✨ Added

@@ -386,13 +386,14 @@ function startClaude() {
     
     if (os.platform() === 'darwin') {
       // macOS: use script command with global node setup
-      terminal.sendText(`${globalNodeSetup} && script -q "${outputLogPath}" claude --continue`);
+      // Try --continue first, fallback to regular claude if no conversation found
+      terminal.sendText(`${globalNodeSetup} && script -q "${outputLogPath}" bash -c "claude --continue || claude"`);
     } else if (os.platform() === 'win32') {
       // Windows: use PowerShell with Tee-Object for logging
-      terminal.sendText(`$env:NODENV_VERSION=""; $env:NODE_VERSION_PREFIX=""; claude --continue | Tee-Object -FilePath "${outputLogPath}"`);
+      terminal.sendText(`$env:NODENV_VERSION=""; $env:NODE_VERSION_PREFIX=""; (claude --continue; if (!$?) { claude }) | Tee-Object -FilePath "${outputLogPath}"`);
     } else {
       // Linux: use script command with different syntax and global node setup
-      terminal.sendText(`${globalNodeSetup} && script -q -c "claude --continue" "${outputLogPath}"`);
+      terminal.sendText(`${globalNodeSetup} && script -q -c "claude --continue || claude" "${outputLogPath}"`);
     }
     
     // Start file monitoring

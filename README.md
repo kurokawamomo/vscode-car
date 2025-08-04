@@ -42,7 +42,8 @@ Install directly from the VS Code Marketplace:
 
 ### Prerequisites
 - VS Code 1.74.0 or higher
-- Claude CLI (`claude --continue` command available)
+- Claude CLI (`claude` command available)
+- **✨ Smart Startup**: Automatically tries `claude --continue` first, falls back to `claude` if no conversation exists
 - **⚠️ Important**: Claude CLI must be started via `script` command for terminal monitoring to work
 
 ### Development Installation
@@ -113,9 +114,9 @@ Terminal output is recorded in:
 - **Low-level Input**: Sends characters individually to handle dialog boxes
 
 ### OS Support
-- **macOS**: `script -q [file] [command]` + `caffeinate`
-- **Linux**: `script -q -c "[command]" [file]` + `systemd-inhibit`
-- **Windows**: Basic support + `powercfg`
+- **macOS**: `script -q [file] bash -c "claude --continue || claude"` + `caffeinate`
+- **Linux**: `script -q -c "claude --continue || claude" [file]` + `systemd-inhibit`
+- **Windows**: `(claude --continue; if (!$?) { claude }) | Tee-Object` + `powercfg`
 
 ### Destructive Command Detection Patterns
 ```regex
