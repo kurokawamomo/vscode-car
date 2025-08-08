@@ -2,6 +2,41 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.8.0] - 2025-08-08
+
+### ✨ Added
+- **Continuous Mode**: New 3-state toggle system (Off → Auto → Continuous → Off) for uninterrupted long-term operations
+- **Intelligent Idle Detection**: Automatically detects when Claude shows empty prompt box (`╭─ > ╰─`) and waits for user input
+- **Auto-Continue Command**: Sends `Continue.` command after configurable timeout to resume Claude's work seamlessly
+- **Enhanced Status Bar**: Dynamic display shows `[   ⇉   ] Claude Continuous` with 2x faster animation for continuous mode
+- **Command Palette Integration**: `Claude Auto Responder: Toggle Continuous Mode` with auto-settings enablement
+
+### ⚙️ New Settings
+- `enableContinuousMode`: Enable continuous mode functionality (default: OFF for safety)
+- `continuousTimeoutMinutes`: Configurable idle timeout from 1-180 minutes (default: 30 minutes)
+
+### 🔧 Improved
+- **Smart Toggle Logic**: Three-state button cycling with automatic skip when continuous mode is disabled
+- **One-Command Activation**: Command palette automatically enables settings and activates continuous mode
+- **Conflict Prevention**: Automatic validation ensures continuous timeout is longer than auto-response delay
+- **Timer Management**: Output changes reset idle timer to prevent premature Continue commands
+- **State Persistence**: Continuous mode setting survives VS Code restarts
+
+### 🛡️ Safety Features
+- **Validation Warnings**: Notifies users when timeout settings conflict and auto-adjusts to safe values
+- **Proper Cleanup**: Continuous monitoring stops cleanly when modes change or extension deactivates
+- **Idle Pattern Recognition**: Precise 3-line empty prompt detection to avoid false triggers
+
+### 🛠️ Technical
+- **Output Monitoring**: Enhanced file watching with continuous timer reset on log changes
+- **Memory Management**: Proper timeout cleanup and state management across mode transitions
+- **TypeScript Compliance**: Full type safety for animation frame management and configuration
+
+### 📋 Usage Scenarios
+- **Long Development Sessions**: Automatically continue multi-step code refactoring or feature implementation
+- **Batch Processing**: Keep Claude working through large file modifications without manual intervention
+- **Extended Analysis**: Allow Claude to work through complex problem-solving sessions autonomously
+
 ## [0.7.0] - 2025-08-08
 
 ### ✨ Added

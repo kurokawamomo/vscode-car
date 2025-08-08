@@ -2,7 +2,7 @@
   "name": "claude-auto-responder",
   "displayName": "Claude Auto Responder",
   "description": "Automatically respond to Claude CLI prompts in VS Code terminal",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "kurokawamomo",
   "repository": {
     "type": "git",
@@ -25,7 +25,8 @@
     "onCommand:claude-auto-responder.sendYes",
     "onCommand:claude-auto-responder.sendYesNoAsk",
     "onCommand:claude-auto-responder.triggerAutoResponse",
-    "onCommand:claude-auto-responder.toggleDebug"
+    "onCommand:claude-auto-responder.toggleDebug",
+    "onCommand:claude-auto-responder.toggleContinuous"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -53,6 +54,10 @@
       {
         "command": "claude-auto-responder.toggleDebug",
         "title": "Claude Auto Responder: Toggle Debug Mode"
+      },
+      {
+        "command": "claude-auto-responder.toggleContinuous",
+        "title": "Claude Auto Responder: Toggle Continuous Mode"
       }
     ],
     "keybindings": [
@@ -99,6 +104,18 @@
           },
           "default": [],
           "description": "Custom list of destructive command patterns to detect (regex supported)"
+        },
+        "claudeAutoResponder.enableContinuousMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable continuous mode to automatically send 'Continue.' when Claude is idle"
+        },
+        "claudeAutoResponder.continuousTimeoutMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 180,
+          "description": "Minutes to wait before sending 'Continue.' in continuous mode (must be longer than auto-response delay)"
         }
       }
     }

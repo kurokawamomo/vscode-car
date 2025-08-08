@@ -13,6 +13,12 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 - `"Yes, and don't ask again this session"` pattern → Sends `2` automatically (configurable)
 - **Configurable Delay**: Wait time can be set from 1-300 seconds (default: 5 seconds)
 
+### Continuous Mode
+- **Intelligent Idle Detection**: Detects empty prompt boxes (`╭─ > ╰─`) when Claude waits for input
+- **Auto-Continue**: Automatically sends `Continue.` after configurable timeout (default: 30 minutes)  
+- **Uninterrupted Workflow**: Enables truly autonomous long-term operations without manual intervention
+- **3-State Toggle**: Off → Auto → Continuous → Off cycling
+
 ###  Safety Features  
 - **Destructive Command Detection**: Detects `rm -rf`, fork bombs, database operations, etc. and cancels auto-response
 - **VS Code Notification**: Shows warning notification (not modal popup) when dangerous commands are detected
@@ -20,9 +26,10 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 
 ### User Interface
 - **Animated Status Bar**: 
-  - `[⇉  ] Claude Auto` (normal operation)
+  - `[⇉  ] Claude Auto` (auto mode)
+  - `[05:30] Claude Continuous` (continuous mode with countdown timer)
   - `[⇉  ] Wait Xs` (configurable countdown period)
-- **One-Click Toggle**: Click status bar to enable/disable Auto Mode
+- **3-State Toggle**: Click status bar to cycle through Off → Auto → Continuous → Off
 
 ### System Integration
 - **Sleep Prevention**: Prevents automatic sleep during Auto Mode
@@ -86,6 +93,7 @@ If automatic detection doesn't work:
 | `Claude Auto Responder: Send Yes and Don't Ask (2)` | Manually send "2" | - |
 | `Claude Auto Responder: Trigger Auto-Response` | Manually trigger dialog detection | - |
 | `Claude Auto Responder: Toggle Debug Mode` | Toggle debug mode | - |
+| `Claude Auto Responder: Toggle Continuous Mode` | Toggle Continuous Mode with auto-settings | - |
 
 ## Configuration
 
@@ -95,6 +103,10 @@ Access via `Ctrl+,` → Search "Claude Auto Responder":
 #### Core Settings
 - `autoResponseDelaySeconds` (default: 5): Number of seconds to wait before sending auto-response (1-300 seconds)
 - `enableDontAskAgain` (default: ON): Enable auto-response for 'Yes, and don't ask again this session' with '2'
+
+#### Continuous Mode
+- `enableContinuousMode` (default: OFF): Enable continuous mode for autonomous long-term operations
+- `continuousTimeoutMinutes` (default: 30): Minutes to wait before sending 'Continue.' in continuous mode (1-180 minutes)
 
 #### Logging & Monitoring  
 - `logSkippedQuestions` (default: ON): Log skipped questions and responses to `.claude-skipped-questions.log`
