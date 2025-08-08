@@ -5,33 +5,33 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 
 \*Auto-diaper-change feature not yet implemented.
 
-## 🚀 Features
+## Features
 
-### 🤖 Automatic Response
+### Automatic Response
 - Automatically detects dialogs enclosed in `╭─` boxes
 - `"Do you want to"` pattern → Sends `1` (Yes) automatically
-- `"Yes, and don't ask again this session"` pattern → Sends `2` automatically
-- **⚠️ Important**: Wait time may vary (not exactly 5 seconds) depending on system performance
+- `"Yes, and don't ask again this session"` pattern → Sends `2` automatically (configurable)
+- **Configurable Delay**: Wait time can be set from 1-300 seconds (default: 5 seconds)
 
-### 🛡️ Safety Features  
+###  Safety Features  
 - **Destructive Command Detection**: Detects `rm -rf`, fork bombs, database operations, etc. and cancels auto-response
 - **VS Code Notification**: Shows warning notification (not modal popup) when dangerous commands are detected
-- **⚠️ Experimental**: This extension is in early development and may be unstable
+- ** Experimental**: This extension is in early development and may be unstable
 
-### 🎨 User Interface
+### User Interface
 - **Animated Status Bar**: 
   - `[⇉  ] Claude Auto` (normal operation)
-  - `[⇉  ] Wait to Proceed!` (5-second wait period)
+  - `[⇉  ] Wait Xs` (configurable countdown period)
 - **One-Click Toggle**: Click status bar to enable/disable Auto Mode
 
-### ⚡ System Integration
+### System Integration
 - **Sleep Prevention**: Prevents automatic sleep during Auto Mode
   - macOS: `caffeinate`
   - Windows: `powercfg` 
   - Linux: `systemd-inhibit` / `xset`
 - **Node Version Management**: Ignores local `nodenv`, `nvm`, etc. and uses global Node.js version
 
-## 📦 Installation
+## Installation
 
 ### From VS Code Marketplace
 Install directly from the VS Code Marketplace:
@@ -43,8 +43,8 @@ Install directly from the VS Code Marketplace:
 ### Prerequisites
 - VS Code 1.74.0 or higher
 - Claude CLI (`claude` command available)
-- **✨ Smart Startup**: Automatically tries `claude --continue` first, falls back to `claude` if no conversation exists
-- **⚠️ Important**: Claude CLI must be started via `script` command for terminal monitoring to work
+- **Smart Startup**: Automatically tries `claude --continue` first, falls back to `claude` if no conversation exists
+- **Important**: Claude CLI must be started via `script` command for terminal monitoring to work
 
 ### Development Installation
 1. Clone this repository
@@ -52,24 +52,23 @@ Install directly from the VS Code Marketplace:
 3. Press F5 to launch debug mode
 4. Test the extension in the new window
 
-## 🎯 Usage
+## Usage
 
 ### Basic Usage
 
 1. **Enable Auto Mode**
    - Click `[✽]` in the status bar
    - Or `Ctrl+Shift+P` → `Claude Auto Mode: Toggle`
-   - Or `Option+Shift+Tab` (macOS)
 
 2. **Start Claude CLI**
    - Auto-start option appears when Auto Mode is enabled
    - Or manually start via `Ctrl+Shift+P` → `Claude Auto Responder: Start Claude Terminal`
-   - **⚠️ Requirement**: Must use the extension's command to start Claude for monitoring to work
+   - **Requirement**: Must use the extension's command to start Claude for monitoring to work
 
 3. **Automatic Response**
-   - When a dialog appears, automatically waits 5 seconds
-   - Status bar changes to `Wait to Proceed!` animation
-   - Automatically sends appropriate response
+   - When a dialog appears, automatically waits (configurable delay)
+   - Status bar changes to `Wait Xs` animation with countdown
+   - Automatically sends appropriate response (`1` or `2`)
 
 ### Manual Trigger
 
@@ -77,23 +76,33 @@ If automatic detection doesn't work:
 - `Ctrl+Shift+P` → `Claude Auto Responder: Trigger Auto-Response`
 - Copy dialog text for analysis
 
-## 🎛️ Command Reference
+## Command Reference
 
 | Command | Description | Shortcut |
 |---------|-------------|----------|
-| `Claude Auto Responder: Toggle Auto Mode` | Toggle Auto Mode on/off | `Option+Shift+Tab` |
+| `Claude Auto Responder: Toggle Auto Mode` | Toggle Auto Mode on/off | - |
 | `Claude Auto Responder: Start Claude Terminal` | Start Claude CLI with monitoring | - |
 | `Claude Auto Responder: Send Yes (1)` | Manually send "1" | - |
 | `Claude Auto Responder: Send Yes and Don't Ask (2)` | Manually send "2" | - |
 | `Claude Auto Responder: Trigger Auto-Response` | Manually trigger dialog detection | - |
 | `Claude Auto Responder: Toggle Debug Mode` | Toggle debug mode | - |
 
-## ⚙️ Configuration
+## Configuration
 
 ### VS Code Settings
 Access via `Ctrl+,` → Search "Claude Auto Responder":
 
-- `enableTerminalBufferRefresh` (default: ON): Periodically refresh terminal buffer with arrow down key every 60 seconds to ensure `script -q` log updates work properly
+#### Core Settings
+- `autoResponseDelaySeconds` (default: 5): Number of seconds to wait before sending auto-response (1-300 seconds)
+- `enableDontAskAgain` (default: ON): Enable auto-response for 'Yes, and don't ask again this session' with '2'
+
+#### Logging & Monitoring  
+- `logSkippedQuestions` (default: ON): Log skipped questions and responses to `.claude-skipped-questions.log`
+- `enableTerminalBufferRefresh` (default: ON): Periodically refresh terminal buffer with arrow down key every 60 seconds
+
+#### Safety Features
+- `ignoreDestructiveCommandsDetection` (default: OFF): Ignore destructive command detection and proceed with auto-response
+- `customBlacklist` (default: empty): Custom list of destructive command patterns to detect (regex supported)
 
 ### Debug Mode
 For detailed log output:
@@ -102,11 +111,12 @@ For detailed log output:
 
 ### Log Files
 Terminal output is recorded in:
-- Workspace: `.claude-output.log` (auto-rotates at 100 lines)
-- Fallback: `/tmp/claude-output-[timestamp].log`
+- **Terminal Output**: `.claude-output.log` (auto-rotates at 100 lines, cleaned for readability)
+- **Response Log**: `.claude-skipped-questions.log` (contains actual Claude dialog content and responses)
+- **Fallback**: `/tmp/claude-output-[timestamp].log`
 - **Note**: Files are automatically cleaned up when extension deactivates
 
-## 🔧 Technical Specifications
+## Technical Specifications
 
 ### Architecture
 - **File-based Monitoring**: Uses `script` command to log terminal output to file
@@ -130,7 +140,7 @@ Terminal output is recorded in:
 /delete\s+from\s+\w+\s*;?\s*$/i  // DELETE without WHERE
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Claude CLI Won't Start
 1. Check if Claude CLI is installed: `claude --version`
@@ -146,7 +156,7 @@ Terminal output is recorded in:
 1. Copy dialog text
 2. Use `Claude Auto Responder: Trigger Auto-Response` → `Analyze` for manual analysis
 
-## 🔒 Security
+## Security
 
 ### Destructive Command Protection
 - Cancels auto-response for proposals containing dangerous commands
@@ -158,6 +168,6 @@ Terminal output is recorded in:
 - Automatically deleted when extension deactivates
 - No external server communication
 
-## 📄 License
+## License
 
 MIT License - See [LICENSE](LICENSE) file for details

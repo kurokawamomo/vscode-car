@@ -2,6 +2,48 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.7.0] - 2025-08-08
+
+### ✨ Added
+- **"Yes, and don't ask again" Support**: Enhanced pattern recognition to prioritize "Yes, and don't ask again this session" dialogs for '2' response
+- **Configurable Countdown Timer**: New setting `autoResponseDelaySeconds` (1-300 seconds, default: 5) for customizable wait times
+- **Enhanced Logging System**: Improved `.claude-skipped-questions.log` to capture actual Claude dialog content from `.claude-output.log`
+- **Text Cleaning Pipeline**: Automatic removal of NUL characters, ESC sequences, and ANSI color codes from log files
+
+### ⚙️ New Settings
+- `autoResponseDelaySeconds`: Number of seconds to wait before sending auto-response (1-300 seconds, default: 5)
+- `enableDontAskAgain`: Enable auto-response for 'Yes, and don't ask again this session' with '2' (default: ON)
+- `logSkippedQuestions`: Log skipped questions and responses to `.claude-skipped-questions.log` (default: ON)
+- `ignoreDestructiveCommandsDetection`: Ignore destructive command detection and proceed with auto-response (default: OFF)
+- `customBlacklist`: Custom list of destructive command patterns to detect (regex supported, default: empty)
+
+### 🔧 Improved
+- **Priority-based Pattern Matching**: "Yes, and don't ask again this session" now checked before "Do you want to" to ensure correct response
+- **Dynamic Status Bar**: Wait animation now shows actual countdown seconds: `Wait 5s` → `Wait 4s` → ... → `Wait 1s`
+- **Log Content Quality**: `.claude-skipped-questions.log` now contains full Claude dialog boxes with commands and proposals
+- **Response Precision**: Eliminated unnecessary newline characters in manual responses for cleaner terminal interaction
+
+### 🛠️ Technical
+- **Dialog Extraction**: `extractDialogFromLog()` function retrieves last `╭─` dialog section from `.claude-output.log`
+- **Text Sanitization**: `cleanLogText()` removes control characters while preserving dialog formatting
+- **Configuration Schema**: Complete VS Code settings integration with proper descriptions and defaults
+- **Pattern Recognition**: Fixed condition ordering to prevent generic "Do you want to" from overriding specific "don't ask again" patterns
+
+### 🗑️ Removed
+- **Shift+Tab Shortcut**: Completely removed deprecated Shift+Tab toggle functionality and related settings
+
+### 📋 Example Log Output
+```
+[2025-08-08T08:12:33.698Z] Auto-response: Yes (1)
+╭─ Claude wants to create a new file ─╮
+│ Do you want to proceed?             │
+│ > Create: src/utils/helper.ts       │
+│ 1. Yes                              │
+│ 2. No                               │
+╰─────────────────────────────────────╯
+================================================================================
+```
+
 ## [0.6.0] - 2025-08-04
 
 ### ✨ Added

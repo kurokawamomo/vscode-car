@@ -34,11 +34,12 @@ function errorLog(message: string, ...args: any[]) {
 function getConfiguration() {
   const config = vscode.workspace.getConfiguration('claudeAutoResponder');
   return {
-    enableShiftTabSkip: config.get<boolean>('enableShiftTabSkip', false),
     logSkippedQuestions: config.get<boolean>('logSkippedQuestions', true),
     ignoreDestructiveCommandsDetection: config.get<boolean>('ignoreDestructiveCommandsDetection', false),
     customBlacklist: config.get<string[]>('customBlacklist', []),
-    enableTerminalBufferRefresh: config.get<boolean>('enableTerminalBufferRefresh', true)
+    enableTerminalBufferRefresh: config.get<boolean>('enableTerminalBufferRefresh', true),
+    autoResponseDelaySeconds: config.get<number>('autoResponseDelaySeconds', 5),
+    enableDontAskAgain: config.get<boolean>('enableDontAskAgain', true)
   };
 }
 
@@ -249,7 +250,8 @@ function startWaitAnimation() {
   isWaitingForDialog = true;
   stopStatusAnimation(); // Stop normal animation
   
-  let countdown = 5;
+  const config = getConfiguration();
+  let countdown = config.autoResponseDelaySeconds;
   let waitFrame = 0;
   
   const frames = [
@@ -566,12 +568,12 @@ async function readAndAnalyzeLogFile() {
     
     // Only process if content has changed
     if (trimmedContent !== outputBuffer) {
-      outputBuffer = trimmedContent;
+      outputBuffer = cleanLogText(trimmedContent);
       
       // If original content was more than 100 lines, rotate the log file
       if (lines.length > 100) {
         try {
-          fs.writeFileSync(outputLogPath, trimmedContent, 'utf8');
+          fs.writeFileSync(outputLogPath, cleanLogText(trimmedContent), 'utf8');
           debugLog('Rotated log file to keep last 100 lines');
         } catch (error) {
           debugLog('Failed to rotate log file:', error);
@@ -706,17 +708,12 @@ function sendResponse(response: string) {
     
     // Log the manual response action
     const responseType = response === '1' ? 'Yes (1)' : response === '2' ? 'Yes, and don\'t ask again (2)' : response;
-    logSkippedQuestion(outputBuffer, `Manual response: ${responseType}`);
+    // Extract the dialog box from output.log for logging
+    const dialogContent = extractDialogFromLog();
+    logSkippedQuestion(dialogContent, `Manual response: ${responseType}`);
     
-    // Use the working method: Send as individual keystrokes
-    response.split('').forEach((char, index) => {
-      setTimeout(() => {
-        targetTerminal.sendText(char, false);
-      }, index * 50);
-    });
-    setTimeout(() => {
-      targetTerminal.sendText('\n', false);
-    }, response.length * 50 + 100);
+    // Send response without newline for manual responses
+    targetTerminal.sendText(response, false);
     
     // Update last auto-response timestamp
     lastAutoResponse = Date.now();
@@ -762,11 +759,13 @@ function checkForPrompts(output: string) {
       
       // Only set timeout if there isn't one already pending
       if (!pendingTimeout) {
-        console.log('Setting 5-second timeout for auto-response...');
-        // Set timeout to check for auto-response after 5 seconds
+        const config = getConfiguration();
+        const delayMs = config.autoResponseDelaySeconds * 1000;
+        console.log(`Setting ${config.autoResponseDelaySeconds}-second timeout for auto-response...`);
+        // Set timeout to check for auto-response after configured delay
         pendingTimeout = setTimeout(() => {
           checkForAutoResponse();
-        }, 5000);
+        }, delayMs);
       } else {
         console.log('Timeout already pending, not setting new one');
       }
@@ -791,12 +790,13 @@ function checkForAutoResponse() {
   const lowerOutput = outputBuffer.toLowerCase();
   console.log('Analyzing buffer content for patterns...');
   
-  // Check for "Do you want to" pattern
-  if (lowerOutput.includes('do you want to')) {
-    console.log('Found "Do you want to" pattern, sending response "1"');
+  // Check for "Yes, and don't ask again this session" FIRST (more specific)
+  console.log('Checking for "don\'t ask again" pattern in output:', lowerOutput.substring(0, 200));
+  const config = getConfiguration();
+  if (config.enableDontAskAgain && lowerOutput.includes("yes, and don't ask again this session")) {
+    console.log('Found "don\'t ask again" pattern, sending response "2"');
     
     // Check for destructive commands first
-    const config = getConfiguration();
     if (hasDestructiveCommand(outputBuffer, config)) {
       if (config.ignoreDestructiveCommandsDetection) {
         vscode.window.showWarningMessage(
@@ -823,13 +823,13 @@ function checkForAutoResponse() {
     clearState();
     
     // Use the working low-level input method
-    autoSendResponse('1');
+    autoSendResponse('2');
     return;
   }
   
-  // Check for "Yes, and don't ask again this session"
-  if (lowerOutput.includes("yes, and don't ask again this session")) {
-    console.log('Found "don\'t ask again" pattern, sending response "2"');
+  // Check for "Do you want to" pattern SECOND (less specific)
+  if (lowerOutput.includes('do you want to')) {
+    console.log('Found "Do you want to" pattern, sending response "1"');
     
     // Check for destructive commands first
     const config = getConfiguration();
@@ -877,7 +877,9 @@ function autoSendResponse(response: string) {
   
   // Log the auto-response action
   const responseType = response === '1' ? 'Yes (1)' : response === '2' ? 'Yes, and don\'t ask again (2)' : response;
-  logSkippedQuestion(outputBuffer, `Auto-response: ${responseType}`);
+  // Extract the dialog box from output.log for logging
+  const dialogContent = extractDialogFromLog();
+  logSkippedQuestion(dialogContent, `Auto-response: ${responseType}`);
   
   // Use the working method: Send as individual keystrokes
   response.split('').forEach((char, index) => {
@@ -909,14 +911,61 @@ function logSkippedQuestion(questionText: string, reason: string) {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.tmpdir();
     const logPath = path.join(workspaceFolder, '.claude-skipped-questions.log');
     
+    // Clean the text: remove NUL, ESC sequences, and color codes
+    const cleanedText = cleanLogText(questionText);
+    
     const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] ${reason}\n${questionText}\n${'='.repeat(80)}\n\n`;
+    const logEntry = `[${timestamp}] ${reason}\n${cleanedText}\n${'='.repeat(80)}\n\n`;
     
     fs.appendFileSync(logPath, logEntry, 'utf8');
     debugLog('Logged skipped question to:', logPath);
   } catch (error) {
     debugLog('Failed to log skipped question:', error);
   }
+}
+
+function extractDialogFromLog(): string {
+  if (!outputLogPath) {
+    return outputBuffer; // Fallback to current buffer
+  }
+  
+  try {
+    const fs = require('fs');
+    if (!fs.existsSync(outputLogPath)) {
+      return outputBuffer;
+    }
+    
+    const content = fs.readFileSync(outputLogPath, 'utf8');
+    
+    // Find the last occurrence of ╭─ (dialog box start)
+    const dialogStart = content.lastIndexOf('╭─');
+    if (dialogStart === -1) {
+      return outputBuffer; // No dialog found
+    }
+    
+    // Extract from the last ╭─ to the end
+    const dialogSection = content.substring(dialogStart);
+    
+    // Return the dialog content without cleaning (for logging purposes)
+    return dialogSection;
+  } catch (error) {
+    console.error('Failed to extract dialog from log:', error);
+    return outputBuffer;
+  }
+}
+
+function cleanLogText(text: string): string {
+  return text
+    // Remove NUL characters (0x00)
+    .replace(/\x00/g, '')
+    // Remove ESC character (0x1B) and ANSI escape sequences
+    .replace(/\x1b/g, '')
+    .replace(/\[[0-9;]*[mGKHJC]/g, '')
+    .replace(/\[[0-9;]*[A-Za-z]/g, '')
+    // Remove specific sequences like [2m│
+    .replace(/\[[0-9]+m[│┌┐└┘├┤┬┴┼]/g, '')
+    // Remove other control characters except newlines and tabs
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 }
 
 function hasDestructiveCommand(text: string, config?: { customBlacklist?: string[] }): boolean {

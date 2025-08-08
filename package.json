@@ -2,7 +2,7 @@
   "name": "claude-auto-responder",
   "displayName": "Claude Auto Responder",
   "description": "Automatically respond to Claude CLI prompts in VS Code terminal",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "kurokawamomo",
   "repository": {
     "type": "git",
@@ -65,10 +65,40 @@
     "configuration": {
       "title": "Claude Auto Responder",
       "properties": {
+        "claudeAutoResponder.autoResponseDelaySeconds": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 300,
+          "description": "Number of seconds to wait before sending auto-response (1-300 seconds)"
+        },
+        "claudeAutoResponder.enableDontAskAgain": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable auto-response for 'Yes, and don't ask again this session' with '2'"
+        },
         "claudeAutoResponder.enableTerminalBufferRefresh": {
           "type": "boolean",
           "default": true,
           "description": "Enable periodic arrow down key to refresh terminal buffer every 60 seconds"
+        },
+        "claudeAutoResponder.logSkippedQuestions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Log skipped questions and responses to .claude-skipped-questions.log"
+        },
+        "claudeAutoResponder.ignoreDestructiveCommandsDetection": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ignore destructive command detection and proceed with auto-response"
+        },
+        "claudeAutoResponder.customBlacklist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Custom list of destructive command patterns to detect (regex supported)"
         }
       }
     }
