@@ -34,6 +34,7 @@ let continuousCountdownInterval: NodeJS.Timeout | null = null;
 let continuousEndTime: number = 0;
 let consecutiveIdleCheckFailures: number = 0;
 let lastFailureTime: number = 0;
+let continuousCheckInterval: NodeJS.Timeout | null = null;
 
 // Dashboard notification system (removed unused variable)
 
@@ -83,10 +84,10 @@ function showDashboardNotification() {
   statusFlags.push(config.ignoreDestructiveCommandsDetection ? "⚠️⚠️⚠️" : "");
   
   // ⏩ = Don't ask again  
-  statusFlags.push(config.enableDontAskAgain ? "⏩" : "　");
+  statusFlags.push(config.enableDontAskAgain ? "⏩" : "");
   
   // ⬇️ = Buffer refresh
-  statusFlags.push(config.enableTerminalBufferRefresh ? "⬇️" : "　");
+  statusFlags.push(config.enableTerminalBufferRefresh ? "⬇️" : "");
   
   // ℹ️ = Log
   let logActive = false;
@@ -94,9 +95,9 @@ function showDashboardNotification() {
     const fs = require('fs');
     logActive = fs.existsSync(outputLogPath);
   }
-  statusFlags.push(logActive ? "ℹ️" : "　");
+  statusFlags.push(logActive ? "ℹ️" : "");
   
-  let line3 = `🛠️(${statusFlags.join(" ")})`;
+  let line3 = statusFlags.length ? `🛠️(${statusFlags.filter(v=>v).join(" ")})` : ``;
   
   // Build notification message
   const message = `${line1}${isTerminalRunning ? `\n${line2}\n${line3}` : ``}`;
@@ -478,17 +479,18 @@ function startWaitAnimation() {
     return; // Already in wait animation
   }
   
+  const config = getConfiguration();
+  
   isWaitingForDialog = true;
   stopStatusAnimation(); // Stop normal animation
-  
-  const config = getConfiguration();
+  console.log('🟡 Entering Wait mode for', config.autoResponseDelaySeconds, 'seconds');
   let countdown = config.autoResponseDelaySeconds;
   let waitFrame = 0;
   
   const frames = [
-    `$(alert) [⇉  ] Wait ${countdown}s`,
-    `$(alert) [ ⇉ ] Wait ${countdown}s`,
-    `$(alert) [  ⇉] Wait ${countdown}s`
+    `[ ⇉  ] Wait ${countdown}s`,
+    `[  ⇉ ] Wait ${countdown}s`,
+    `[   ⇉] Wait ${countdown}s`
   ];
   
   statusBarItem.text = frames[waitFrame];
@@ -499,9 +501,9 @@ function startWaitAnimation() {
     
     // Update frames with current countdown
     const updatedFrames = [
-      `$(alert) [⇉  ] Wait ${countdown}s`,
-      `$(alert) [ ⇉ ] Wait ${countdown}s`,
-      `$(alert) [  ⇉] Wait ${countdown}s`
+      `[ ⇉  ] Wait ${countdown}s`,
+      `[  ⇉ ] Wait ${countdown}s`,
+      `[   ⇉] Wait ${countdown}s`
     ];
     
     statusBarItem.text = updatedFrames[waitFrame];
@@ -763,6 +765,35 @@ function startFileMonitoring() {
         clearInterval(terminalRefreshInterval);
       }
     }, 60000); // Every 60 seconds
+
+    // UNIFIED CONTINUOUS MONITORING: Always check for continuous conditions when auto mode is enabled
+    if (continuousCheckInterval) {
+      clearInterval(continuousCheckInterval);
+    }
+    
+    continuousCheckInterval = setInterval(() => {
+      if (isAutoModeEnabled && outputLogPath) {
+        // Silent continuous checking
+        checkForIdlePromptInLog().catch(() => {
+          // Ignore errors silently
+        });
+      } else if (!isAutoModeEnabled) {
+        if (continuousCheckInterval) {
+          clearInterval(continuousCheckInterval);
+          continuousCheckInterval = null;
+        }
+      }
+    }, 1000); // Check every 1 second - ALWAYS running when auto mode is enabled
+    
+    // Do initial check immediately
+    if (isAutoModeEnabled) {
+      // Silent: Initial continuous check
+      setTimeout(() => {
+        checkForIdlePromptInLog().catch(() => {
+          // Ignore errors silently
+        });
+      }, 100);
+    }
   } catch (error) {
     console.error('Error starting file monitoring:', error);
   }
@@ -973,13 +1004,13 @@ function checkForPrompts(output: string) {
     outputBuffer = outputBuffer.slice(-10000);
   }
 
-  console.log('Checking output for prompts. Buffer length:', outputBuffer.length);
+  // Debug removed - too verbose
 
   // Check for box pattern (╭─)
   const hasBox = /╭─/.test(outputBuffer);
   
   if (hasBox) {
-    console.log('Found box pattern (╭─), checking for response patterns...');
+    // Debug removed - too verbose
     
     const lowerOutput = outputBuffer.toLowerCase();
     
@@ -1006,12 +1037,9 @@ function checkForPrompts(output: string) {
         console.log('Timeout already pending, not setting new one');
       }
     } else {
-      console.log('Box pattern found but no actionable dialog detected');
+      // Debug removed - too verbose
       
-      // Check for idle prompt pattern in continuous mode
-      if (isContinuousMode) {
-        checkForIdlePromptInLog();
-      }
+      // Continuous checking is now handled by dedicated interval
     }
   }
 }
@@ -1032,7 +1060,7 @@ function checkForAutoResponse() {
   console.log('Analyzing buffer content for patterns...');
   
   // Check for "Yes, and don't ask again this session" FIRST (more specific)
-  console.log('Checking for "don\'t ask again" pattern in output:', lowerOutput.substring(0, 200));
+  console.log('Checking for "don\'t ask again" pattern in output');
   const config = getConfiguration();
   if (config.enableDontAskAgain && lowerOutput.includes("yes, and don't ask again this session")) {
     console.log('Found "don\'t ask again" pattern, sending response "2"');
@@ -1100,12 +1128,12 @@ function checkForAutoResponse() {
     clearState();
     
     // Use the working low-level input method
-    autoSendResponse('2');
+    autoSendResponse('1');
     return;
   }
   
   console.log('No recognized prompt pattern found in buffer');
-  console.log('Buffer content (first 200 chars):', outputBuffer.substring(0, 200));
+  // Silent: Buffer content too verbose for log
   
   // Clear state even if no pattern found to prevent stuck animations
   clearState();
@@ -1128,9 +1156,7 @@ function autoSendResponse(response: string) {
       terminal!.sendText(char, false);
     }, index * 50);
   });
-  setTimeout(() => {
-    terminal!.sendText('\n', false);
-  }, response.length * 50 + 100);
+  // Enter key removed - not needed
   
   // Update last auto-response timestamp
   lastAutoResponse = Date.now();
@@ -1247,9 +1273,12 @@ function startContinuousCountdownForIdlePrompt() {
 }
 
 function startContinuousMonitoring() {
-  // This function now only sets up the monitoring state without starting countdown
+  // This function now only manages continuous-specific state
   if (!isContinuousMode) return;
-  console.log('Continuous monitoring active - waiting for idle prompt detection');
+  console.log('Continuous monitoring active - unified check already running');
+  
+  // The actual monitoring loop is now handled by startFileMonitoring()
+  // This ensures consistent 1-second checking regardless of how monitoring was started
 }
 
 function stopContinuousMonitoring() {
@@ -1257,7 +1286,15 @@ function stopContinuousMonitoring() {
     clearTimeout(continuousTimeout);
     continuousTimeout = null;
   }
+  
+  // Note: We don't clear continuousCheckInterval here anymore
+  // because it's now managed by startFileMonitoring() and should continue
+  // running for auto mode functionality
+  
   stopContinuousCountdown();
+  
+  // Immediately return to normal animation after countdown reset
+  updateStatusBar();
 }
 
 function startContinuousCountdown() {
@@ -1269,8 +1306,11 @@ function startContinuousCountdown() {
   
   continuousCountdownInterval = setInterval(() => {
     if (continuousEndTime > 0 && Date.now() < continuousEndTime) {
-      // Update status bar with new countdown
-      updateStatusBar();
+      // Skip update if in wait mode to prevent flickering
+      if (!isWaitingForDialog) {
+        // Update status bar with new countdown
+        updateStatusBar();
+      }
     } else {
       // Countdown finished
       stopContinuousCountdown();
@@ -1294,18 +1334,50 @@ function resetContinuousTimer() {
   }
 }
 
-function checkForIdlePromptInLog() {
+// Cache for last dialog content to avoid re-reading if unchanged
+let lastDialogCache: { content: string; timestamp: number } | null = null;
+const DIALOG_CACHE_TTL = 500; // Cache for 500ms
+
+// Rate limiting for checkForIdlePromptInLog to prevent excessive calls
+let lastIdleCheckTime = 0;
+const IDLE_CHECK_RATE_LIMIT_MS = 100; // Minimum 100ms between checks (for dedicated interval)
+let idleCheckInProgress = false;
+
+async function checkForIdlePromptInLog() {
   if (!isContinuousMode || !outputLogPath) {
     return;
   }
   
+  // Rate limiting: skip if called too frequently or already in progress
+  const now = Date.now();
+  if (idleCheckInProgress || now - lastIdleCheckTime < IDLE_CHECK_RATE_LIMIT_MS) {
+    return;
+  }
+  
+  lastIdleCheckTime = now;
+  idleCheckInProgress = true;
+  
   try {
-    const fs = require('fs');
-    if (!fs.existsSync(outputLogPath)) {
-      return;
+    const fs = require('fs').promises;
+    
+    // Check if file exists asynchronously
+    try {
+      await fs.access(outputLogPath);
+    } catch {
+      return; // File doesn't exist
     }
     
-    const content = fs.readFileSync(outputLogPath, 'utf8');
+    // Read only the last 5KB of the file to find recent dialogs
+    const stats = await fs.stat(outputLogPath);
+    const readSize = Math.min(stats.size, 5120); // 5KB max
+    const startPos = Math.max(0, stats.size - readSize);
+    
+    const fileHandle = await fs.open(outputLogPath, 'r');
+    const buffer = Buffer.alloc(readSize);
+    await fileHandle.read(buffer, 0, readSize, startPos);
+    await fileHandle.close();
+    
+    const content = buffer.toString('utf8');
     
     // Find the last occurrence of ╭─ (dialog box start)
     const lastBoxStart = content.lastIndexOf('╭─');
@@ -1316,6 +1388,16 @@ function checkForIdlePromptInLog() {
     // Extract from the last ╭─ to the end
     const lastDialog = content.substring(lastBoxStart);
     
+    // Check cache to avoid reprocessing same dialog
+    if (lastDialogCache && 
+        lastDialogCache.content === lastDialog && 
+        now - lastDialogCache.timestamp < DIALOG_CACHE_TTL) {
+      return; // Same dialog, skip processing
+    }
+    
+    // Update cache
+    lastDialogCache = { content: lastDialog, timestamp: now };
+    
     // Split into lines and check if it matches idle prompt pattern
     const lines = lastDialog.trim().split('\n');
     
@@ -1324,29 +1406,37 @@ function checkForIdlePromptInLog() {
       
       if (isIdlePromptPattern(dialogLines)) {
         consecutiveIdleCheckFailures = 0; // Reset failure counter
+        lastFailureTime = 0; // Reset failure time
         
         // Only start new countdown if one is not already active
         if (continuousEndTime === 0 || Date.now() >= continuousEndTime) {
+          console.log('🟢 Starting continuous countdown - idle prompt detected');
           startContinuousCountdownForIdlePrompt();
+        } else {
+          // Silent: Countdown already active
         }
       } else {
-        const now = Date.now();
-        // Only count as new failure if more than cooldown time has passed since last failure
-        if (now - lastFailureTime > IDLE_CHECK_COOLDOWN_MS) {
-          consecutiveIdleCheckFailures++;
-          lastFailureTime = now;
-          
-          // Reset countdown only after max consecutive failures (with cooldown)
-          if (consecutiveIdleCheckFailures >= MAX_CONSECUTIVE_FAILURES) {
-            stopContinuousMonitoring();
-            consecutiveIdleCheckFailures = 0; // Reset counter
-            lastFailureTime = 0; // Reset failure time
-          } 
+        // Dialog is complete but not idle - count as failure immediately
+        consecutiveIdleCheckFailures++;
+        lastFailureTime = now;
+        
+        // Reset countdown only after max consecutive failures
+        if (consecutiveIdleCheckFailures >= MAX_CONSECUTIVE_FAILURES) {
+          // Silent: Countdown reset due to failures
+          stopContinuousMonitoring();
+          consecutiveIdleCheckFailures = 0; // Reset counter
+          lastFailureTime = 0; // Reset failure time
         }
       }
+    } else {
+      // Dialog incomplete (less than 3 lines) - don't count towards reset, but don't clear failure count either
+      // Silent: Dialog incomplete, skipping reset count
+      // Don't modify consecutiveIdleCheckFailures here - preserve the count from previous complete dialogs
     }
   } catch (error) {
-    console.error('Error checking for idle prompt in log:', error);
+    // Silently ignore errors to avoid spam
+  } finally {
+    idleCheckInProgress = false;
   }
 }
 
@@ -1497,9 +1587,18 @@ function clearState() {
   }
   // Stop continuous monitoring and countdown
   stopContinuousMonitoring();
+  // Clear continuous check interval
+  if (continuousCheckInterval) {
+    clearInterval(continuousCheckInterval);
+    continuousCheckInterval = null;
+  }
   // Reset failure counters
   consecutiveIdleCheckFailures = 0;
   lastFailureTime = 0;
+  // Clear dialog cache and rate limiting state
+  lastDialogCache = null;
+  lastIdleCheckTime = 0;
+  idleCheckInProgress = false;
   // Stop wait animation when clearing state
   stopWaitAnimation();
 }

@@ -2,6 +2,32 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.0.0] - 2025-08-09
+
+### ✨ Added
+- **Unified Monitoring System**: Single daemon-like 1-second interval monitoring for both Auto and Continuous modes
+- **New Extension Icon**: Updated visual identity with modern design
+
+### 🔧 Improved
+- **Performance Optimization**: Converted synchronous I/O to asynchronous operations, eliminating 10-second hangup issues
+- **Continuous Mode Stability**: Fixed countdown not starting automatically and improved reset detection to 1-2 seconds
+- **Status Bar Animation**: Immediate return to `[  ⇉  ]` animation after Continuous countdown reset
+- **Debug Output**: Reduced verbose logging while preserving important state transitions
+
+### 🐛 Fixed
+- **Critical Auto-Response Bug**: "Do you want to" pattern now correctly sends `1` instead of `2`
+- **Removed Enter Key**: Auto-responses no longer send unnecessary Enter key after number input
+- **Countdown Display**: Fixed flickering during Wait mode by skipping status bar updates
+- **Idle Detection**: Enhanced pattern matching with 3-line dialog validation and caching
+- **Memory Management**: Removed notification disposal errors and optimized file I/O operations
+- **Rate Limiting**: Implemented 300ms rate limiting with dedicated intervals to prevent UI freezing
+
+### 🛠️ Technical
+- **Asynchronous File Operations**: All file I/O converted to `fs.promises` for better performance
+- **Unified Check Loop**: Single 1-second interval handles both pattern detection and countdown management
+- **Cache System**: Dialog content caching with 500ms TTL to avoid redundant processing
+- **Error Handling**: Silent error handling in monitoring loops to prevent debug spam
+
 ## [0.9.0] - 2025-08-09
 
 ### ✨ Added

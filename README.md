@@ -1,5 +1,7 @@
 # Claude Auto Responder for VS Code
 
+<img src="vscode-car.png" alt="Claude Auto Responder Icon" width="128" height="128">
+
 A VS Code extension that automates interactions with Claude CLI by automatically responding to confirmation dialogs, streamlining your development workflow.
 Now you can safely take a nap or do the dishes while your code finishes itself.*
 
@@ -10,13 +12,16 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 ### Automatic Response
 - Automatically detects dialogs enclosed in `╭─` boxes
 - `"Do you want to"` pattern → Sends `1` (Yes) automatically
-- `"Yes, and don't ask again this session"` pattern → Sends `2` automatically (configurable)
+- `"Yes, and don't ask again this session"` pattern → Sends `2` automatically (priority)
 - **Configurable Delay**: Wait time can be set from 1-300 seconds (default: 5 seconds)
+- **Fast Detection**: 1-2 second response time for pattern changes
 
 ### Continuous Mode
 - **Intelligent Idle Detection**: Detects empty prompt boxes (`╭─ > ╰─`) when Claude waits for input
 - **Auto-Continue**: Automatically sends `Continue.` after configurable timeout (default: 30 minutes)  
 - **Uninterrupted Workflow**: Enables truly autonomous long-term operations without manual intervention
+- **Unified Monitoring**: Single daemon-like 1-second interval monitoring system
+- **Instant Recovery**: Immediate return to normal animation after countdown reset
 - **3-State Toggle**: Off → Auto → Continuous → Off cycling
 
 ###  Safety Features  
@@ -135,8 +140,9 @@ Terminal output is recorded in:
 
 ### Architecture
 - **File-based Monitoring**: Uses `script` command to log terminal output to file
-- **Real-time Detection**: Monitors file changes for immediate pattern analysis
-- **Low-level Input**: Sends characters individually to handle dialog boxes
+- **Real-time Detection**: Unified 1-second interval monitoring with asynchronous I/O operations
+- **Low-level Input**: Sends characters individually (no Enter key) to handle dialog boxes
+- **Performance Optimized**: Cache system and rate limiting prevent UI freezing
 
 ### OS Support
 - **macOS**: `script -q [file] bash -c "claude --continue || claude"` + `caffeinate`
