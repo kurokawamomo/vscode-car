@@ -28,6 +28,9 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 - **Animated Status Bar**: 
   - `[⇉  ] Claude Auto` (auto mode)
   - `[05:30] Claude Continuous` (continuous mode with countdown timer)
+- **Unified Dashboard Notifications**: Compact emoji-based status display
+  - Mode indicators: ▶️ (Auto) / 🔄 (Continuous) / ⏸️ (Off)
+  - Status flags: ⚠️⚠️⚠️ (Ignore Destructive detection) / ⏩ (Don't ask) / ⬇️ (Buffer refresh) / ℹ️ (Logging)
   - `[⇉  ] Wait Xs` (configurable countdown period)
 - **3-State Toggle**: Click status bar to cycle through Off → Auto → Continuous → Off
 

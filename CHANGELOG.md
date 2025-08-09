@@ -2,6 +2,25 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [0.9.0] - 2025-08-09
+
+### ✨ Added
+- **Unified Dashboard Notifications**: Compact emoji-based status display replacing multiple individual notifications
+- **Enhanced UI Indicators**: Mode indicators (▶️/🔄/⏸️) and status flags (🆖⏩⬇️ℹ️) for quick visual feedback
+
+### 🔧 Improved
+- **Performance Optimization**: Removed excessive debug logging and fixed 10-second hangup issues that caused extension freezing
+- **Terminal State Detection**: Accurate detection of terminal disconnect status in notifications
+- **Settings UI**: Added emoji indicators in VS Code settings descriptions for easy identification
+- **Notification Management**: Streamlined notification system without disposal errors
+
+### 🐛 Fixed
+- **Idle Detection Stability**: Added 500ms cooldown and 2-failure threshold to prevent rapid continuous mode resets
+- **Countdown Timer Issues**: Fixed continuous mode timer not starting and premature resets during log activity
+- **Pattern Recognition**: Improved idle prompt detection to avoid false positives with text-containing prompts
+- **Memory Management**: Removed unused notification disposal that caused runtime errors
+- **Status Bar Updates**: Fixed animation and countdown display refresh issues
+
 ## [0.8.0] - 2025-08-08
 
 ### ✨ Added

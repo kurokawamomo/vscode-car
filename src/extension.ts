@@ -21,6 +21,11 @@ let isWaitingForDialog: boolean = false;
 let debugMode: boolean = false;
 let caffeineProcess: any = null;
 
+// Constants for continuous mode
+const IDLE_CHECK_COOLDOWN_MS = 500;
+const MAX_CONSECUTIVE_FAILURES = 2;
+const COUNTDOWN_UPDATE_INTERVAL_MS = 1000;
+
 // Continuous mode variables
 let continuousTimeout: NodeJS.Timeout | null = null;
 let lastOutputChange: number = 0;
@@ -30,6 +35,8 @@ let continuousEndTime: number = 0;
 let consecutiveIdleCheckFailures: number = 0;
 let lastFailureTime: number = 0;
 
+// Dashboard notification system (removed unused variable)
+
 function debugLog(message: string, ...args: any[]) {
   if (debugMode) {
     console.log(`[Claude Auto] ${message}`, ...args);
@@ -38,6 +45,68 @@ function debugLog(message: string, ...args: any[]) {
 
 function errorLog(message: string, ...args: any[]) {
   console.error(`[Claude Auto Error] ${message}`, ...args);
+}
+
+function showDashboardNotification() {
+  // Note: VS Code notifications are promises and cannot be dismissed programmatically
+  // The notification will auto-close when a new one is shown
+  
+  const config = getConfiguration();
+  
+  // Build dashboard content with compact emoji format
+  let modeIcon: string;
+  if (!isAutoModeEnabled) {
+    modeIcon = "⏸️"; // Paused
+  } else if (isContinuousMode) {
+    modeIcon = "🔄"; // Continuous
+  } else {
+    modeIcon = "▶️"; // Playing/Auto
+  }
+  
+  // Check if terminal is actually running (not just exists)
+  const isTerminalRunning = terminal && !terminal.exitStatus;
+  let terminalStatus = isTerminalRunning ? "✅" : "Terminal Disconnected ❌";
+  
+  // First line: Mode and Terminal status
+  let line1 = `${terminalStatus} Mode: ${modeIcon}`;
+  
+  // Second line: Wait and Continue times
+  let line2 = `${config.autoResponseDelaySeconds}s`;
+  if (isContinuousMode) {
+    line2 += `/${config.continuousTimeoutMinutes}m`;
+  }
+  
+  // Third line: Status flags with emojis
+  let statusFlags = [];
+  
+  // 🆖 = Detect destructive
+  statusFlags.push(config.ignoreDestructiveCommandsDetection ? "⚠️⚠️⚠️" : "");
+  
+  // ⏩ = Don't ask again  
+  statusFlags.push(config.enableDontAskAgain ? "⏩" : "　");
+  
+  // ⬇️ = Buffer refresh
+  statusFlags.push(config.enableTerminalBufferRefresh ? "⬇️" : "　");
+  
+  // ℹ️ = Log
+  let logActive = false;
+  if (outputLogPath) {
+    const fs = require('fs');
+    logActive = fs.existsSync(outputLogPath);
+  }
+  statusFlags.push(logActive ? "ℹ️" : "　");
+  
+  let line3 = `🛠️(${statusFlags.join(" ")})`;
+  
+  // Build notification message
+  const message = `${line1}${isTerminalRunning ? `\n${line2}\n${line3}` : ``}`;
+  
+  // Show notification with dashboard info
+  vscode.window.showInformationMessage(message, "Settings").then(selection => {
+    if (selection === "Settings") {
+      vscode.commands.executeCommand('workbench.action.openSettings', 'claudeAutoResponder');
+    }
+  });
 }
 
 function getConfiguration() {
@@ -148,7 +217,7 @@ export function activate(ext: vscode.ExtensionContext) {
       status = 'Auto';
     }
     
-    vscode.window.showInformationMessage(`Claude Mode: ${status}`);
+    showDashboardNotification();
     
     // Handle sleep prevention and monitoring
     if (isAutoModeEnabled) {
@@ -229,7 +298,7 @@ function toggleAutoMode() {
     status = 'auto';
   }
   
-  vscode.window.showInformationMessage(`Claude Mode: ${status}`);
+  showDashboardNotification();
   
   debugLog(`Claude Mode: ${status}, outputLogPath: ${outputLogPath}, terminal: ${terminal ? terminal.name : 'none'}`);
   
@@ -345,7 +414,6 @@ function startStatusAnimation() {
   
   const terminalStatus = terminal ? ' (Running)' : '';
   const modeName = isContinuousMode ? 'Continuous' : 'Auto';
-  const frameSpacing = isContinuousMode ? '   ⇉   ' : '⇉';
   
   let frames: string[];
   if (isContinuousMode) {
@@ -382,7 +450,16 @@ function startStatusAnimation() {
   animationFrame = 0;
   statusBarItem.text = frames[animationFrame];
   
-  const intervalSpeed = 400;
+  // Determine animation speed based on mode and state
+  let intervalSpeed: number;
+  if (isWaitingForDialog) {
+    intervalSpeed = 500; // Slower when waiting for dialog
+  } else if (isContinuousMode && continuousEndTime > 0) {
+    intervalSpeed = 1000; // Update countdown every second
+  } else {
+    intervalSpeed = 800; // Normal animation speed
+  }
+  
   statusAnimationInterval = setInterval(() => {
     animationFrame = (animationFrame + 1) % frames.length;
     statusBarItem.text = frames[animationFrame];
@@ -558,7 +635,7 @@ function startClaude() {
     // Update status bar
     updateStatusBar();
 
-    vscode.window.showInformationMessage('✅ Started new Claude CLI terminal with auto-monitoring enabled.');
+    showDashboardNotification();
     
   } catch (error) {
     console.error('Failed to start Claude:', error);
@@ -1151,8 +1228,6 @@ function startContinuousCountdownForIdlePrompt() {
   
   const timeoutMs = timeoutMinutes * 60 * 1000;
   
-  console.log(`Starting continuous countdown for idle prompt: ${timeoutMinutes} minutes`);
-  
   // Clear any existing timeout first, but preserve countdown state
   if (continuousTimeout) {
     clearTimeout(continuousTimeout);
@@ -1162,8 +1237,6 @@ function startContinuousCountdownForIdlePrompt() {
   // Set new countdown
   lastOutputChange = Date.now();
   continuousEndTime = Date.now() + timeoutMs;
-  
-  console.log('Set continuousEndTime to:', continuousEndTime, 'current time:', Date.now());
   
   continuousTimeout = setTimeout(() => {
     sendContinueCommand();
@@ -1194,30 +1267,23 @@ function startContinuousCountdown() {
     continuousCountdownInterval = null;
   }
   
-  console.log('Starting continuous countdown interval, endTime:', continuousEndTime);
-  
   continuousCountdownInterval = setInterval(() => {
     if (continuousEndTime > 0 && Date.now() < continuousEndTime) {
-      const remainingMs = continuousEndTime - Date.now();
-      console.log('Countdown tick, remaining ms:', remainingMs);
       // Update status bar with new countdown
       updateStatusBar();
     } else {
-      console.log('Countdown finished or invalid endTime');
       // Countdown finished
       stopContinuousCountdown();
     }
-  }, 1000); // Update every second
+  }, COUNTDOWN_UPDATE_INTERVAL_MS); // Update every second
 }
 
 function stopContinuousCountdown() {
-  console.log('stopContinuousCountdown called, current continuousEndTime:', continuousEndTime);
   if (continuousCountdownInterval) {
     clearInterval(continuousCountdownInterval);
     continuousCountdownInterval = null;
   }
   continuousEndTime = 0;
-  console.log('continuousEndTime reset to 0');
 }
 
 function resetContinuousTimer() {
@@ -1229,75 +1295,55 @@ function resetContinuousTimer() {
 }
 
 function checkForIdlePromptInLog() {
-  console.log('checkForIdlePromptInLog called, isContinuousMode:', isContinuousMode, 'outputLogPath:', outputLogPath);
-  
   if (!isContinuousMode || !outputLogPath) {
-    console.log('Skipping idle prompt check - continuous mode disabled or no log path');
     return;
   }
   
   try {
     const fs = require('fs');
     if (!fs.existsSync(outputLogPath)) {
-      console.log('Output log file does not exist:', outputLogPath);
       return;
     }
     
     const content = fs.readFileSync(outputLogPath, 'utf8');
-    console.log('Read output.log content, length:', content.length, 'last 200 chars:', JSON.stringify(content.slice(-200)));
     
     // Find the last occurrence of ╭─ (dialog box start)
     const lastBoxStart = content.lastIndexOf('╭─');
     if (lastBoxStart === -1) {
-      console.log('No dialog box found in output.log');
       return; // No dialog box found
     }
     
     // Extract from the last ╭─ to the end
     const lastDialog = content.substring(lastBoxStart);
-    console.log('Last dialog extracted:', JSON.stringify(lastDialog));
     
     // Split into lines and check if it matches idle prompt pattern
     const lines = lastDialog.trim().split('\n');
-    console.log('Dialog lines:', lines.length, 'lines:', JSON.stringify(lines.slice(0, 5)));
     
     if (lines.length >= 3) {
       const dialogLines = lines.slice(0, 3).join('\n'); // Take first 3 lines of the dialog
-      console.log('Checking idle prompt pattern for:', JSON.stringify(dialogLines));
       
       if (isIdlePromptPattern(dialogLines)) {
-        console.log('✓ Detected idle prompt pattern in output.log');
-        consecutiveIdleCheckFailures >= 0 ? consecutiveIdleCheckFailures -= 2 : consecutiveIdleCheckFailures = 0; // Reset failure counter
+        consecutiveIdleCheckFailures = 0; // Reset failure counter
         
         // Only start new countdown if one is not already active
         if (continuousEndTime === 0 || Date.now() >= continuousEndTime) {
-          console.log('Starting new continuous countdown');
           startContinuousCountdownForIdlePrompt();
-        } else {
-          console.log('Countdown already active, not restarting');
         }
       } else {
         const now = Date.now();
-        // Only count as new failure if more than 1 second has passed since last failure
-        if (now - lastFailureTime > 500) {
+        // Only count as new failure if more than cooldown time has passed since last failure
+        if (now - lastFailureTime > IDLE_CHECK_COOLDOWN_MS) {
           consecutiveIdleCheckFailures++;
-          console.log(`Consecutive idle check failures: ${consecutiveIdleCheckFailures}`);
           lastFailureTime = now;
-          console.log(`✗ Dialog does not match idle prompt pattern (failure #${consecutiveIdleCheckFailures})`);
           
-          // Reset countdown only after 2 consecutive failures (with cooldown)
-          if (consecutiveIdleCheckFailures >= 2) {
-            console.log('5 consecutive idle check failures (with cooldown) - resetting continuous countdown');
+          // Reset countdown only after max consecutive failures (with cooldown)
+          if (consecutiveIdleCheckFailures >= MAX_CONSECUTIVE_FAILURES) {
             stopContinuousMonitoring();
             consecutiveIdleCheckFailures = 0; // Reset counter
             lastFailureTime = 0; // Reset failure time
           } 
-        } else {
-          console.log('✗ Dialog does not match idle prompt pattern (within cooldown, not counting)');
         }
       }
-    } else {
-      console.log('Dialog has less than 3 lines, skipping idle check');
     }
   } catch (error) {
     console.error('Error checking for idle prompt in log:', error);
@@ -1306,10 +1352,8 @@ function checkForIdlePromptInLog() {
 
 function isIdlePromptPattern(text: string): boolean {
   const lines = text.split('\n');
-  console.log('isIdlePromptPattern checking:', lines.length, 'lines:', JSON.stringify(lines));
   
   if (lines.length !== 3) {
-    console.log('Not 3 lines, returning false');
     return false;
   }
   
@@ -1318,27 +1362,20 @@ function isIdlePromptPattern(text: string): boolean {
   const middleLine = lines[1].trim();
   const bottomLine = lines[2].trim();
   
-  console.log('Lines trimmed:', {topLine, middleLine, bottomLine});
-  
   // Top line should start with ╭ and contain dashes
   if (!topLine.startsWith('╭') || !topLine.includes('─')) {
-    console.log('Top line check failed');
     return false;
   }
   
   // Middle line should be "│ > │" (empty prompt with only spaces)
   if (!middleLine.match(/^│\s*>\s*│\s*$/)) {
-    console.log('Middle line check failed, actual:', JSON.stringify(middleLine));
     return false;
   }
   
   // Bottom line should start with ╰ and contain dashes
   if (!bottomLine.startsWith('╰') || !bottomLine.includes('─')) {
-    console.log('Bottom line check failed');
     return false;
   }
-  
-  console.log('✓ All checks passed - this is an idle prompt pattern');
   return true;
 }
 
@@ -1433,8 +1470,8 @@ function hasDestructiveCommand(text: string, config?: { customBlacklist?: string
 function cleanupTerminal() {
   console.log('Cleaning up Claude terminal');
   
-  // Show notification that terminal was stopped
-  vscode.window.showInformationMessage('🔴 Claude CLI terminal monitoring stopped.');
+  // Show updated dashboard
+  showDashboardNotification();
   
   terminal = null;
   
