@@ -20,6 +20,15 @@ let fileWatcher: vscode.FileSystemWatcher | null = null;
 let isWaitingForDialog: boolean = false;
 let debugMode: boolean = false;
 let caffeineProcess: any = null;
+let lastActivityTime = Date.now();
+let idleCheckInterval: NodeJS.Timeout | null = null;
+let isCaffeinePaused = false;
+
+// Continuous mode response monitoring
+let isContinuousPaused = false;
+let continuousPauseReason: 'fast' | 'limit' | null = null;
+let fastResponseCount = 0;
+let lastContinueTime = 0;
 
 // Constants for continuous mode
 const IDLE_CHECK_COOLDOWN_MS = 500;
@@ -120,7 +129,15 @@ function getConfiguration() {
     autoResponseDelaySeconds: config.get<number>('autoResponseDelaySeconds', 5),
     enableDontAskAgain: config.get<boolean>('enableDontAskAgain', true),
     enableContinuousMode: config.get<boolean>('enableContinuousMode', false),
-    continuousTimeoutMinutes: config.get<number>('continuousTimeoutMinutes', 30)
+    continuousTimeoutMinutes: config.get<number>('continuousTimeoutMinutes', 30),
+    idleSleepPreventionMinutes: config.get<number>('idleSleepPreventionMinutes', 10),
+    // Hidden settings - only configurable via JSON editing
+    shortResponseThreshold: config.get<number>('shortResponseThreshold', 50),
+    shortResponseLimit: config.get<number>('shortResponseLimit', 10),
+    enableFastResponsePause: config.get<boolean>('enableFastResponsePause', true),
+    fastResponseTimeoutSeconds: config.get<number>('fastResponseTimeoutSeconds', 5), // Changed from 3 to 5
+    fastResponseLimit: config.get<number>('fastResponseLimit', 5),
+    enableUsageLimitAutoSwitch: config.get<boolean>('enableUsageLimitAutoSwitch', false)
   };
 }
 
@@ -174,6 +191,17 @@ export function activate(ext: vscode.ExtensionContext) {
     console.log(`Claude Auto Debug Mode: ${status}`);
   });
   
+  // Add resume continuous command
+  const resumeContinuousDisposable = vscode.commands.registerCommand('claude-auto-responder.resumeContinuous', () => {
+    if (isContinuousPaused) {
+      console.log('Manual resume of continuous mode requested');
+      resumeContinuousMode();
+      vscode.window.showInformationMessage('Continuous mode resumed manually');
+    } else {
+      vscode.window.showInformationMessage('Continuous mode is not paused');
+    }
+  });
+  
   // Add continuous mode toggle command
   const toggleContinuousDisposable = vscode.commands.registerCommand('claude-auto-responder.toggleContinuous', () => {
     const config = getConfiguration();
@@ -223,6 +251,7 @@ export function activate(ext: vscode.ExtensionContext) {
     // Handle sleep prevention and monitoring
     if (isAutoModeEnabled) {
       startSleepPrevention();
+      startIdleMonitoring();
       
       if (outputLogPath) {
         startFileMonitoring();
@@ -245,6 +274,7 @@ export function activate(ext: vscode.ExtensionContext) {
       }
     } else {
       stopSleepPrevention();
+      stopIdleMonitoring();
       stopContinuousMonitoring();
       clearState();
     }
@@ -256,6 +286,7 @@ export function activate(ext: vscode.ExtensionContext) {
   context.subscriptions.push(sendYesNoAskDisposable);
   context.subscriptions.push(triggerAutoResponseDisposable);
   context.subscriptions.push(toggleDebugDisposable);
+  context.subscriptions.push(resumeContinuousDisposable);
   context.subscriptions.push(toggleContinuousDisposable);
   context.subscriptions.push(statusBarItem);
   
@@ -306,6 +337,7 @@ function toggleAutoMode() {
   // Enable/disable sleep prevention and continuous monitoring
   if (isAutoModeEnabled) {
     startSleepPrevention();
+    startIdleMonitoring();
     
     // Reload log file if auto mode is resumed
     if (outputLogPath) {
@@ -329,12 +361,14 @@ function toggleAutoMode() {
     }
   } else {
     stopSleepPrevention();
+    stopIdleMonitoring();
     clearState();
   }
 }
 
 function startSleepPrevention() {
   if (caffeineProcess) {
+    console.log('Sleep prevention already running, skipping start');
     return; // Already running
   }
   
@@ -370,6 +404,8 @@ function startSleepPrevention() {
   } catch (error) {
     debugLog('Failed to start sleep prevention:', error);
   }
+  
+  console.log('startSleepPrevention completed, isContinuousPaused:', isContinuousPaused);
 }
 
 function stopSleepPrevention() {
@@ -389,6 +425,62 @@ function stopSleepPrevention() {
       }
     }
   }
+}
+
+function updateActivityTime() {
+  lastActivityTime = Date.now();
+  
+  // Only resume caffeinate if it was paused due to idle AND we're not in continuous pause
+  if (isCaffeinePaused && isAutoModeEnabled && !isContinuousPaused) {
+    console.log('Activity detected - resuming sleep prevention');
+    isCaffeinePaused = false;
+    startSleepPrevention();
+  }
+  
+  // Do NOT automatically resume continuous mode here - let it stay paused
+}
+
+function checkIdleTimeout() {
+  if (!isAutoModeEnabled || !caffeineProcess || isCaffeinePaused) {
+    return;
+  }
+  
+  const config = getConfiguration();
+  const idleTimeoutMs = config.idleSleepPreventionMinutes * 60 * 1000;
+  const idleTime = Date.now() - lastActivityTime;
+  
+  if (idleTime >= idleTimeoutMs) {
+    console.log(`Idle for ${config.idleSleepPreventionMinutes} minutes - pausing sleep prevention`);
+    isCaffeinePaused = true;
+    stopSleepPrevention();
+    
+    // Show notification
+    vscode.window.showInformationMessage(
+      `Claude Auto Responder: Sleep prevention paused due to ${config.idleSleepPreventionMinutes} minutes of inactivity`
+    );
+  }
+}
+
+function startIdleMonitoring() {
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+  }
+  
+  // Check every minute
+  idleCheckInterval = setInterval(() => {
+    checkIdleTimeout();
+  }, 60000);
+  
+  // Initial check
+  checkIdleTimeout();
+}
+
+function stopIdleMonitoring() {
+  if (idleCheckInterval) {
+    clearInterval(idleCheckInterval);
+    idleCheckInterval = null;
+  }
+  isCaffeinePaused = false;
 }
 
 function updateStatusBar() {
@@ -418,8 +510,15 @@ function startStatusAnimation() {
   
   let frames: string[];
   if (isContinuousMode) {
-    // Continuous mode shows countdown timer
-    if (continuousEndTime > 0) {
+    // Check if continuous mode is paused
+    if (isContinuousPaused) {
+      const pauseLabel = continuousPauseReason === 'limit' ? 'Limit' : 'Pause';
+      frames = [
+        `[${pauseLabel}] Claude ${modeName}${terminalStatus}`,
+        `[${pauseLabel}] Claude ${modeName}${terminalStatus}`
+      ];
+    } else if (continuousEndTime > 0) {
+      // Continuous mode shows countdown timer
       const remainingMs = Math.max(0, continuousEndTime - Date.now());
       const totalMinutes = Math.floor(remainingMs / 60000);
       const totalSeconds = Math.floor((remainingMs % 60000) / 1000);
@@ -457,6 +556,8 @@ function startStatusAnimation() {
     intervalSpeed = 500; // Slower when waiting for dialog
   } else if (isContinuousMode && continuousEndTime > 0) {
     intervalSpeed = 1000; // Update countdown every second
+  } else if (isContinuousPaused) {
+    intervalSpeed = 2000; // Slower animation when paused
   } else {
     intervalSpeed = 800; // Normal animation speed
   }
@@ -568,7 +669,7 @@ function startClaude() {
     terminal.dispose();
     terminal = null;
     
-    // Clear state
+    // Clear state but preserve sleep prevention if auto mode is still enabled
     clearState();
   }
 
@@ -631,7 +732,7 @@ function startClaude() {
       terminal.sendText(`${globalNodeSetup} && script -q -c "claude --continue || claude" "${outputLogPath}"`);
     }
     
-    // Start file monitoring
+    // Start file monitoring (this will also handle continuous monitoring)
     startFileMonitoring();
     
     // Update status bar
@@ -739,6 +840,15 @@ function startFileMonitoring() {
       if (isAutoModeEnabled) {
         console.log('File changed, analyzing...');
         readAndAnalyzeLogFile();
+        
+        // Check for timing-based fast response detection
+        // Only check if enough time has passed for a real response
+        if (lastContinueTime > 0 && Date.now() - lastContinueTime > 100) {
+          checkResponseTiming();
+        }
+        
+        // Check for usage limit in log content
+        checkUsageLimit();
       }
     });
     
@@ -777,6 +887,12 @@ function startFileMonitoring() {
         checkForIdlePromptInLog().catch(() => {
           // Ignore errors silently
         });
+        
+        // Check for timing-based detection and usage limit
+        if (lastContinueTime > 0 && Date.now() - lastContinueTime > 100) {
+          checkResponseTiming();
+        }
+        checkUsageLimit();
       } else if (!isAutoModeEnabled) {
         if (continuousCheckInterval) {
           clearInterval(continuousCheckInterval);
@@ -847,7 +963,10 @@ async function readAndAnalyzeLogFile() {
         }
       }
       
-      checkForPrompts(''); // Trigger pattern check
+      // Only trigger pattern check in Auto mode (not Continuous mode)
+      if (!isContinuousMode) {
+        checkForPrompts(''); // Trigger pattern check
+      }
     }
     
   } catch (error) {
@@ -1143,6 +1262,7 @@ function autoSendResponse(response: string) {
   if (!terminal) return;
   
   console.log(`Auto-sending response: ${response}`);
+  updateActivityTime(); // User activity detected
   
   // Log the auto-response action
   const responseType = response === '1' ? 'Yes (1)' : response === '2' ? 'Yes, and don\'t ask again (2)' : response;
@@ -1408,6 +1528,12 @@ async function checkForIdlePromptInLog() {
         consecutiveIdleCheckFailures = 0; // Reset failure counter
         lastFailureTime = 0; // Reset failure time
         
+        // Do not start countdown if in Limit mode (usage limit detected)
+        if (isContinuousPaused && continuousPauseReason === 'limit') {
+          // Silent: In Limit mode, waiting for usage limit to be resolved
+          return;
+        }
+        
         // Only start new countdown if one is not already active
         if (continuousEndTime === 0 || Date.now() >= continuousEndTime) {
           console.log('🟢 Starting continuous countdown - idle prompt detected');
@@ -1418,6 +1544,13 @@ async function checkForIdlePromptInLog() {
       } else {
         // Dialog is complete but not idle - count as failure immediately
         consecutiveIdleCheckFailures++;
+        
+        // Only update activity time for non-continuous pause scenarios
+        if (!isContinuousPaused) {
+          updateActivityTime(); // User is active
+        }
+        
+        // Do not auto-resume immediately - let the user manually resume or wait for genuine slow response
         lastFailureTime = now;
         
         // Reset countdown only after max consecutive failures
@@ -1488,6 +1621,11 @@ function sendContinueCommand() {
   // Send newline after the command
   setTimeout(() => {
     terminal!.sendText('\n', false);
+    
+    // Record continue time AFTER sending the command to avoid immediate timing check
+    setTimeout(() => {
+      lastContinueTime = Date.now();
+    }, 500); // Wait 500ms after command is sent
   }, continueText.length * 50 + 100);
   
   // Log the action
@@ -1498,6 +1636,194 @@ function sendContinueCommand() {
   stopContinuousMonitoring();
   
   // Continuous monitoring will restart automatically when next idle prompt is detected
+}
+
+function checkResponseTiming() {
+  if (!isContinuousMode || !lastContinueTime || !outputLogPath) {
+    return;
+  }
+  
+  // Return early if already paused to prevent automatic resume
+  if (isContinuousPaused) {
+    return;
+  }
+  
+  const config = getConfiguration();
+  const responseTime = Date.now() - lastContinueTime;
+  const fastThreshold = config.fastResponseTimeoutSeconds * 1000;
+  
+  // Skip timing check if it's too soon after the Continue command (likely still processing)
+  if (responseTime < 1000) {
+    return; // Wait at least 1 second before checking timing
+  }
+  
+  if (responseTime <= fastThreshold) {
+    // Fast response detected
+    if (config.enableFastResponsePause) {
+      fastResponseCount++;
+      console.log(`Fast response detected (${responseTime}ms), count: ${fastResponseCount}`);
+      
+      if (fastResponseCount >= config.fastResponseLimit) {
+        pauseContinuousModeForFast();
+      }
+    }
+  } else {
+    // Reset counter on slow response
+    fastResponseCount = 0;
+    
+    // Auto-resume disabled - user must manually resume or wait for next session
+  }
+  
+  // Reset continue time after checking
+  lastContinueTime = 0;
+}
+
+function pauseContinuousModeForFast() {
+  if (isContinuousPaused) return;
+  
+  console.log('Auto-pausing Continuous mode due to fast responses');
+  isContinuousPaused = true;
+  continuousPauseReason = 'fast';
+  fastResponseCount = 0;
+  
+  // Stop continuous monitoring
+  stopContinuousMonitoring();
+  
+  // Pause caffeinate
+  if (caffeineProcess && !isCaffeinePaused) {
+    isCaffeinePaused = true;
+    stopSleepPrevention();
+  }
+  
+  // Update status bar
+  updateStatusBar();
+  
+  // Show notification
+  vscode.window.showInformationMessage(
+    'Continuous mode paused due to fast responses. Use Command Palette > "Resume Continuous Mode" to resume manually.'
+  );
+}
+
+function autoSwitchToLimitMode() {
+  // Switch to temporary continuous mode (Limit mode)
+  const wasAutoMode = isAutoModeEnabled && !isContinuousMode;
+  
+  isAutoModeEnabled = true;
+  isContinuousMode = true;
+  isContinuousPaused = true;
+  continuousPauseReason = 'limit';
+  
+  // Update state
+  context.globalState.update('claudeAutoMode', isAutoModeEnabled);
+  context.globalState.update('claudeContinuousMode', isContinuousMode);
+  
+  // Start sleep prevention and monitoring if not already running
+  if (wasAutoMode) {
+    startSleepPrevention();
+    startIdleMonitoring();
+    
+    if (outputLogPath) {
+      startFileMonitoring();
+    }
+  }
+  
+  // Update status bar
+  updateStatusBar();
+  
+  // Show notification
+  vscode.window.showInformationMessage(
+    'Usage limit detected - temporarily switched to Continuous mode. Will return to Auto mode when limit is resolved.'
+  );
+}
+
+function returnToAutoMode() {
+  // Return from Limit mode to Auto mode
+  isAutoModeEnabled = true;
+  isContinuousMode = false;
+  isContinuousPaused = false;
+  continuousPauseReason = null;
+  
+  // Update state
+  context.globalState.update('claudeAutoMode', isAutoModeEnabled);
+  context.globalState.update('claudeContinuousMode', isContinuousMode);
+  
+  // Stop continuous monitoring
+  stopContinuousMonitoring();
+  
+  // Update status bar
+  updateStatusBar();
+  
+  // Show notification
+  vscode.window.showInformationMessage(
+    'Usage limit resolved - returned to Auto mode.'
+  );
+}
+
+function checkUsageLimit() {
+  if (!outputLogPath) return;
+  
+  try {
+    const fs = require('fs');
+    const content = fs.readFileSync(outputLogPath, 'utf8');
+    
+    if (content.includes('Claude usage limit reached')) {
+      const config = getConfiguration();
+      
+      if (config.enableUsageLimitAutoSwitch && !isContinuousMode) {
+        console.log('Usage limit detected - switching Auto mode to temporary Limit mode (Continuous)');
+        // Store original mode for later restoration
+        context.globalState.update('originalModeBeforeLimit', 'auto');
+        autoSwitchToLimitMode();
+      } else if (isContinuousMode) {
+        // In Continuous mode: Reset fast response count to prevent unwanted pausing
+        if (fastResponseCount > 0) {
+          console.log('Usage limit detected in Continuous mode - resetting fast response count');
+          fastResponseCount = 0;
+        }
+        // Do nothing else - stay in Continuous mode
+      }
+    } else {
+      // Check if limit has been resolved and we should return to original mode
+      const originalMode = context.globalState.get('originalModeBeforeLimit', null);
+      if (originalMode && isContinuousMode && continuousPauseReason === 'limit') {
+        console.log('Usage limit resolved - returning to Auto mode');
+        context.globalState.update('originalModeBeforeLimit', null);
+        returnToAutoMode();
+      }
+    }
+  } catch (error) {
+    // Ignore file read errors
+  }
+}
+
+function pauseContinuousMode() {
+  // This function is now deprecated - kept for backward compatibility
+  // Use pauseContinuousModeForFast() instead
+  pauseContinuousModeForFast();
+}
+
+function resumeContinuousMode() {
+  if (!isContinuousPaused) return;
+  
+  // Add stack trace to identify unexpected calls
+  console.log(`Auto-resuming Continuous mode (was paused for: ${continuousPauseReason})`);
+  console.trace('resumeContinuousMode called from:');
+  
+  isContinuousPaused = false;
+  continuousPauseReason = null;
+  fastResponseCount = 0;
+  
+  // Resume caffeinate if auto mode is enabled and it was paused due to idle (not continuous pause)
+  if (isAutoModeEnabled && isCaffeinePaused) {
+    console.log('Resuming sleep prevention after continuous mode resume');
+    isCaffeinePaused = false;
+    startSleepPrevention();
+  }
+  
+  // Update status bar
+  updateStatusBar();
+  
+  // Continuous monitoring will restart automatically when idle prompt is detected
 }
 
 function hasDestructiveCommand(text: string, config?: { customBlacklist?: string[] }): boolean {
@@ -1613,6 +1939,7 @@ export function deactivate() {
   
   // Stop sleep prevention
   stopSleepPrevention();
+  stopIdleMonitoring();
   
   // Cleanup file watcher
   if (fileWatcher) {

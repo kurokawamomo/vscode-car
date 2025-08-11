@@ -2,6 +2,39 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.1.0] - 2025-08-11
+
+### ✨ Added
+- **Smart Sleep Prevention**: Auto-pause caffeinate after 10 minutes of idle time, resume on activity
+- **Fast Response Pause**: Automatic pause in Continuous mode when Claude responds too quickly (within 5 seconds) repeatedly
+- **Usage Limit Auto-Switch**: Temporary switch from Auto mode to [Limit] mode when usage limit detected, returns to Auto when resolved
+- **Manual Resume Command**: "Claude Auto Responder: Resume Continuous Mode" for manual continuous mode recovery
+
+### 🔧 Improved
+- **Settings Simplification**: Fast response settings moved to JSON-only configuration (UI hidden for cleaner settings)
+- **Pause State Management**: Enhanced status bar display with [Pause]/[Limit] indicators for different pause reasons
+- **Response Timing**: Fast response threshold increased from 3 to 5 seconds for better detection accuracy
+- **Limit Mode Behavior**: Proper handling of usage limits with visual feedback and automatic mode restoration
+
+### 🐛 Fixed
+- **Critical Continuous Pause Bug**: Fixed immediate auto-resume issue where pause state was cleared instantly
+- **Auto Mode Sleep Prevention**: Resolved excessive stop/start cycle of caffeinate during normal operation
+- **Limit Mode Countdown**: Fixed inappropriate countdown start when in usage limit state
+- **Activity Detection**: Improved logic to distinguish between genuine user activity and automated processes
+
+### 🛠️ Technical
+- **Timing-Based Detection**: Implemented response time monitoring for fast response detection
+- **State Machine Improvements**: Enhanced continuous pause state management with proper reason tracking
+- **Monitoring Optimization**: Separated Auto mode dialog checking from Continuous mode monitoring
+- **Memory Management**: Better handling of pause states and automatic cleanup
+
+### ⚙️ Hidden Settings (JSON Configuration Only)
+- `enableFastResponsePause`: Auto-pause for fast responses (default: true)
+- `fastResponseTimeoutSeconds`: Fast response threshold in seconds (default: 5)
+- `fastResponseLimit`: Number of fast responses before pause (default: 5)
+- `shortResponseThreshold`: Character threshold for short responses (default: 50)
+- `shortResponseLimit`: Consecutive short response limit (default: 10)
+
 ## [1.0.0] - 2025-08-09
 
 ### ✨ Added

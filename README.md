@@ -1,50 +1,32 @@
-# Claude Auto Responder for VS Code
+# Claude Auto Responder for VS Code Terminal
 
 <img src="vscode-car.png" alt="Claude Auto Responder Icon" width="128" height="128">
 
-A VS Code extension that automates interactions with Claude CLI by automatically responding to confirmation dialogs, streamlining your development workflow.
+A VS Code extension that automates interactions with Claude CLI **in VS Code's integrated terminal** by automatically responding to confirmation dialogs, streamlining your development workflow.
+
+⚠️ **Important**: This extension is specifically designed for VS Code's integrated terminal. It monitors and responds to Claude CLI prompts running inside VS Code, not in external terminals.
+
 Now you can safely take a nap or do the dishes while your code finishes itself.*
 
 \*Auto-diaper-change feature not yet implemented.
 
 ## Features
 
-### Automatic Response
-- Automatically detects dialogs enclosed in `╭─` boxes
-- `"Do you want to"` pattern → Sends `1` (Yes) automatically
-- `"Yes, and don't ask again this session"` pattern → Sends `2` automatically (priority)
-- **Configurable Delay**: Wait time can be set from 1-300 seconds (default: 5 seconds)
-- **Fast Detection**: 1-2 second response time for pattern changes
+### 🤖 Auto Mode
+- Detects `╭─` dialog boxes and responds automatically
+- `"Do you want to"` → `1` (Yes) • `"Yes, and don't ask again"` → `2`
+- Configurable delay (1-300s, default: 5s) • Safety checks for destructive commands
 
-### Continuous Mode
-- **Intelligent Idle Detection**: Detects empty prompt boxes (`╭─ > ╰─`) when Claude waits for input
-- **Auto-Continue**: Automatically sends `Continue.` after configurable timeout (default: 30 minutes)  
-- **Uninterrupted Workflow**: Enables truly autonomous long-term operations without manual intervention
-- **Unified Monitoring**: Single daemon-like 1-second interval monitoring system
-- **Instant Recovery**: Immediate return to normal animation after countdown reset
-- **3-State Toggle**: Off → Auto → Continuous → Off cycling
+### 🔄 Continuous Mode  
+- **Auto-Continue**: Sends `Continue.` when Claude shows empty prompt (`╭─ > ╰─`)
+- **Smart Pause**: Auto-pauses on fast responses or usage limits
+- **Status Display**: `[Pause]`/`[Limit]` indicators with auto/manual resume
+- **3-State Toggle**: Off → Auto → Continuous → Off
 
-###  Safety Features  
-- **Destructive Command Detection**: Detects `rm -rf`, fork bombs, database operations, etc. and cancels auto-response
-- **VS Code Notification**: Shows warning notification (not modal popup) when dangerous commands are detected
-- ** Experimental**: This extension is in early development and may be unstable
-
-### User Interface
-- **Animated Status Bar**: 
-  - `[⇉  ] Claude Auto` (auto mode)
-  - `[05:30] Claude Continuous` (continuous mode with countdown timer)
-- **Unified Dashboard Notifications**: Compact emoji-based status display
-  - Mode indicators: ▶️ (Auto) / 🔄 (Continuous) / ⏸️ (Off)
-  - Status flags: ⚠️⚠️⚠️ (Ignore Destructive detection) / ⏩ (Don't ask) / ⬇️ (Buffer refresh) / ℹ️ (Logging)
-  - `[⇉  ] Wait Xs` (configurable countdown period)
-- **3-State Toggle**: Click status bar to cycle through Off → Auto → Continuous → Off
-
-### System Integration
-- **Sleep Prevention**: Prevents automatic sleep during Auto Mode
-  - macOS: `caffeinate`
-  - Windows: `powercfg` 
-  - Linux: `systemd-inhibit` / `xset`
-- **Node Version Management**: Ignores local `nodenv`, `nvm`, etc. and uses global Node.js version
+### 🛡️ Safety & System
+- **Sleep Prevention**: Auto caffeinate/powercfg with 10min idle pause  
+- **Destructive Detection**: Blocks `rm -rf`, fork bombs, etc.
+- **Cross-Platform**: macOS, Windows, Linux support
 
 ## Installation
 
@@ -69,21 +51,23 @@ Install directly from the VS Code Marketplace:
 
 ## Usage
 
-### Basic Usage
+### Basic Usage (VS Code Terminal Only)
 
 1. **Enable Auto Mode**
-   - Click `[✽]` in the status bar
+   - Click `[✽]` in the VS Code status bar
    - Or `Ctrl+Shift+P` → `Claude Auto Mode: Toggle`
 
-2. **Start Claude CLI**
+2. **Start Claude CLI in VS Code Terminal**
    - Auto-start option appears when Auto Mode is enabled
    - Or manually start via `Ctrl+Shift+P` → `Claude Auto Responder: Start Claude Terminal`
-   - **Requirement**: Must use the extension's command to start Claude for monitoring to work
+   - **Critical**: Claude CLI must be started through this extension's command, not manually
+   - **Important**: Only works with VS Code's integrated terminal, not external terminals
 
 3. **Automatic Response**
-   - When a dialog appears, automatically waits (configurable delay)
+   - When a dialog appears in the VS Code terminal, automatically waits (configurable delay)
    - Status bar changes to `Wait Xs` animation with countdown
    - Automatically sends appropriate response (`1` or `2`)
+   - All monitoring and responses happen within VS Code
 
 ### Manual Trigger
 
@@ -115,6 +99,10 @@ Access via `Ctrl+,` → Search "Claude Auto Responder":
 #### Continuous Mode
 - `enableContinuousMode` (default: OFF): Enable continuous mode for autonomous long-term operations
 - `continuousTimeoutMinutes` (default: 30): Minutes to wait before sending 'Continue.' in continuous mode (1-180 minutes)
+- `enableFastResponsePause` (default: ON): Enable auto-pause when Claude responds too quickly repeatedly
+- `fastResponseTimeoutSeconds` (default: 3): Seconds threshold for considering a response as 'fast' (1-10 seconds)
+- `fastResponseLimit` (default: 5): Number of consecutive fast responses before auto-pausing (2-20 times)
+- `enableUsageLimitAutoSwitch` (default: OFF): Auto-switch to Continuous mode when usage limit is reached
 
 #### Logging & Monitoring  
 - `logSkippedQuestions` (default: ON): Log skipped questions and responses to `.claude-skipped-questions.log`
@@ -123,6 +111,9 @@ Access via `Ctrl+,` → Search "Claude Auto Responder":
 #### Safety Features
 - `ignoreDestructiveCommandsDetection` (default: OFF): Ignore destructive command detection and proceed with auto-response
 - `customBlacklist` (default: empty): Custom list of destructive command patterns to detect (regex supported)
+
+#### System Integration
+- `idleSleepPreventionMinutes` (default: 10): Minutes of idle time before automatically pausing sleep prevention (1-60 minutes)
 
 ### Debug Mode
 For detailed log output:
