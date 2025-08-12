@@ -2,6 +2,32 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.3.0] - 2025-08-12
+
+### 🚀 Performance
+- **Major Performance Optimization**: Fixed VS Code freezing issues caused by excessive file monitoring
+- **Smart File Monitoring**: Added dual-level throttling (FileWatcher: 1s, File I/O: 500ms) to prevent frequent reads
+- **CPU Usage Reduction**: Analyzed CPU profile and optimized hotspots in readAndAnalyzeLogFile function
+- **Monitoring Intervals**: Reduced continuous check frequency from 1s to 3s for better system responsiveness
+- **Debug Output Cleanup**: Removed frequent console logging that impacted performance
+
+### 🐛 Fixed
+- **Continuous Mode Wait Animation**: Fixed Wait countdown not starting when dialogs detected in Continuous mode
+- **Auto-Response in Continuous**: Resolved infinite Wait loop where responses weren't sent after countdown
+- **Buffer Content Issue**: Fixed empty string being passed to pattern detection instead of actual log content
+- **Status Animation Override**: Prevented Wait animation from being overridden by normal status bar updates
+
+### 🛠️ Technical
+- **File Read Throttling**: Intelligent throttling prevents multiple file reads within 500ms window
+- **FileWatcher Optimization**: Added 1-second throttle to file change events to reduce excessive triggers
+- **Backup Monitoring**: 10-second fallback check only when FileWatcher hasn't triggered recently
+- **Memory Efficiency**: Reduced monitoring overhead while maintaining responsiveness for dialog detection
+
+### 🔧 Improved
+- **TypeScript Compliance**: Fixed compilation errors with proper type annotations
+- **Error Handling**: Enhanced status bar animation with null safety checks
+- **Resource Management**: Better cleanup of monitoring intervals and file watchers
+
 ## [1.2.0] - 2025-08-12
 
 ### 🐛 Fixed

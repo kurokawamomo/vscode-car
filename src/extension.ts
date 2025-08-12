@@ -10,6 +10,10 @@ let terminal: vscode.Terminal | null = null;
 let outputBuffer: string = '';
 let lastProcessedOutput: string = '';
 let pendingTimeout: NodeJS.Timeout | null = null;
+let lastFileReadTime: number = 0;
+const FILE_READ_THROTTLE_MS = 500; // Throttle file reads to max once per 500ms
+let lastFileWatchTime: number = 0;
+const FILE_WATCH_THROTTLE_MS = 1000; // Throttle file watch events to max once per 1000ms
 let lastAutoResponse: number = 0;
 let statusAnimationInterval: NodeJS.Timeout | null = null;
 let waitAnimationInterval: NodeJS.Timeout | null = null;
@@ -891,7 +895,14 @@ function startFileMonitoring() {
     // Watch for file changes
     fileWatcher.onDidChange(() => {
       if (isAutoModeEnabled) {
-        console.log('File changed, analyzing...');
+        // Throttle file watch events to prevent excessive calls
+        const now = Date.now();
+        if (now - lastFileWatchTime < FILE_WATCH_THROTTLE_MS) {
+          return; // Skip this event, too soon after last watch event
+        }
+        lastFileWatchTime = now;
+        
+        // File changed - analyze with throttling
         readAndAnalyzeLogFile();
         
         // Check for timing-based fast response detection
@@ -909,14 +920,18 @@ function startFileMonitoring() {
     
     console.log('File monitoring started successfully');
     
-    // Also set up periodic checking as backup
-    const checkInterval = setInterval(() => {
+    // Add lightweight backup check in case FileWatcher fails
+    const backupCheckInterval = setInterval(() => {
       if (isAutoModeEnabled && outputLogPath) {
-        readAndAnalyzeLogFile();
+        // Only do backup check if FileWatcher hasn't triggered recently
+        const now = Date.now();
+        if (now - lastFileWatchTime > FILE_WATCH_THROTTLE_MS * 2) {
+          readAndAnalyzeLogFile();
+        }
       } else if (!isAutoModeEnabled) {
-        clearInterval(checkInterval);
+        clearInterval(backupCheckInterval);
       }
-    }, 2000); // Check every 2 seconds
+    }, 10000); // Backup check every 10 seconds
 
     // Set up periodic terminal buffer refresh with arrow down key (every 60 seconds)
     const terminalRefreshInterval = setInterval(() => {
@@ -952,7 +967,7 @@ function startFileMonitoring() {
           continuousCheckInterval = null;
         }
       }
-    }, 1000); // Check every 1 second - ALWAYS running when auto mode is enabled
+    }, 3000); // Check every 3 seconds - reduced frequency for better performance
     
     // Do initial check immediately
     if (isAutoModeEnabled) {
@@ -972,6 +987,13 @@ async function readAndAnalyzeLogFile() {
   if (!outputLogPath) {
     return;
   }
+  
+  // Throttle file reads to prevent performance issues
+  const now = Date.now();
+  if (now - lastFileReadTime < FILE_READ_THROTTLE_MS) {
+    return; // Skip this read, too soon after last read
+  }
+  lastFileReadTime = now;
   
   try {
     const fs = require('fs').promises;
@@ -1014,7 +1036,6 @@ async function readAndAnalyzeLogFile() {
       
       // Trigger pattern check for dialogs (both Auto and Continuous modes)
       // Continuous mode needs this for Wait animation, but won't trigger auto-response
-      console.log(`🔄 Checking for prompts with buffer length: ${outputBuffer.length}`);
       checkForPrompts(outputBuffer);
     }
     
@@ -1164,7 +1185,7 @@ function sendResponse(response: string) {
 // Terminal output monitoring is handled in startMonitoring function
 
 function checkForPrompts(output: string) {
-  console.log(`🔍 checkForPrompts called with output length: ${output.length}, current mode: ${isContinuousMode ? 'Continuous' : 'Auto'}`);
+  // Removed frequent debug logging for performance
   
   // Add to buffer
   outputBuffer += output;
@@ -1178,15 +1199,11 @@ function checkForPrompts(output: string) {
   const hasBox = /╭─/.test(outputBuffer);
   
   if (hasBox) {
-    console.log('📦 Dialog box detected in buffer');
-    
     const lowerOutput = outputBuffer.toLowerCase();
     
     // Check if the box contains "Do you want to" or "Yes, and don't ask again"
     const hasDoYouWant = lowerOutput.includes('do you want to');
     const hasDontAskAgain = lowerOutput.includes("yes, and don't ask again this session");
-    
-    console.log(`🔍 Dialog patterns - DoYouWant: ${hasDoYouWant}, DontAskAgain: ${hasDontAskAgain}`);
     
     if (hasDoYouWant || hasDontAskAgain) {
       console.log('✅ Found actionable dialog pattern, starting wait animation...');
@@ -1207,15 +1224,9 @@ function checkForPrompts(output: string) {
       } else {
         console.log('⏭️ Timeout already pending, not setting new one');
       }
-    } else {
-      console.log('❌ No actionable dialog patterns found');
-    }
-  } else {
-    // Only log when there's actual content to process
-    if (output.length > 0) {
-      console.log('📄 No dialog box pattern found in buffer');
     }
   }
+  // Removed frequent logging for patterns not found
 }
 
 function checkForAutoResponse() {
@@ -1515,7 +1526,7 @@ const DIALOG_CACHE_TTL = 500; // Cache for 500ms
 
 // Rate limiting for checkForIdlePromptInLog to prevent excessive calls
 let lastIdleCheckTime = 0;
-const IDLE_CHECK_RATE_LIMIT_MS = 100; // Minimum 100ms between checks (for dedicated interval)
+const IDLE_CHECK_RATE_LIMIT_MS = 1000; // Minimum 1000ms between checks (reduced frequency)
 let idleCheckInProgress = false;
 
 async function checkForIdlePromptInLog() {
