@@ -74,7 +74,7 @@ function showDashboardNotification() {
   }
   
   // Check if terminal is actually running (not just exists)
-  const isTerminalRunning = terminal && !terminal.exitStatus;
+  const isTerminalRunning: boolean = !!(terminal && terminal.exitStatus === undefined);
   let terminalStatus = isTerminalRunning ? "✅" : "Terminal Disconnected ❌";
   
   // First line: Mode and Terminal status
@@ -87,7 +87,7 @@ function showDashboardNotification() {
   }
   
   // Third line: Status flags with emojis
-  let statusFlags = [];
+  let statusFlags: string[] = [];
   
   // 🆖 = Detect destructive
   statusFlags.push(config.ignoreDestructiveCommandsDetection ? "⚠️⚠️⚠️" : "");
@@ -98,16 +98,26 @@ function showDashboardNotification() {
   // ⬇️ = Buffer refresh
   statusFlags.push(config.enableTerminalBufferRefresh ? "⬇️" : "");
   
-  // ℹ️ = Log
-  let logActive = false;
-  if (outputLogPath) {
-    const fs = require('fs');
-    logActive = fs.existsSync(outputLogPath);
-  }
-  statusFlags.push(logActive ? "ℹ️" : "");
-  
+  // ℹ️ = Log - Check asynchronously to prevent blocking
   let line3 = statusFlags.length ? `🛠️(${statusFlags.filter(v=>v).join(" ")})` : ``;
   
+  // Use async file check to prevent blocking
+  if (outputLogPath) {
+    const fs = require('fs').promises;
+    fs.access(outputLogPath).then(() => {
+      // Log file exists, add flag
+      line3 = statusFlags.length ? `🛠️(${statusFlags.filter(v=>v).join(" ")} ℹ️)` : `🛠️(ℹ️)`;
+      showNotificationWithContent(line1, line2, line3, isTerminalRunning);
+    }).catch(() => {
+      // Log file doesn't exist, show without log flag
+      showNotificationWithContent(line1, line2, line3, isTerminalRunning);
+    });
+  } else {
+    showNotificationWithContent(line1, line2, line3, isTerminalRunning);
+  }
+}
+
+function showNotificationWithContent(line1: string, line2: string, line3: string, isTerminalRunning: boolean) {
   // Build notification message
   const message = `${line1}${isTerminalRunning ? `\n${line2}\n${line3}` : ``}`;
   
@@ -319,51 +329,62 @@ function toggleAutoMode() {
     isContinuousMode = false;
   }
   
-  context.globalState.update('claudeAutoMode', isAutoModeEnabled);
-  context.globalState.update('claudeContinuousMode', isContinuousMode);
-  updateStatusBar();
-  
-  let status = 'disabled';
-  if (isAutoModeEnabled && isContinuousMode) {
-    status = 'continuous';
-  } else if (isAutoModeEnabled) {
-    status = 'auto';
-  }
-  
-  showDashboardNotification();
-  
-  debugLog(`Claude Mode: ${status}, outputLogPath: ${outputLogPath}, terminal: ${terminal ? terminal.name : 'none'}`);
-  
-  // Enable/disable sleep prevention and continuous monitoring
-  if (isAutoModeEnabled) {
-    startSleepPrevention();
-    startIdleMonitoring();
+  // Use async state updates to prevent blocking
+  Promise.all([
+    context.globalState.update('claudeAutoMode', isAutoModeEnabled),
+    context.globalState.update('claudeContinuousMode', isContinuousMode)
+  ]).then(() => {
+    updateStatusBar();
     
-    // Reload log file if auto mode is resumed
-    if (outputLogPath) {
-      startFileMonitoring();
+    let status = 'disabled';
+    if (isAutoModeEnabled && isContinuousMode) {
+      status = 'continuous';
+    } else if (isAutoModeEnabled) {
+      status = 'auto';
     }
+    
+    // Defer dashboard notification to next tick to prevent blocking
+    setTimeout(() => {
+      showDashboardNotification();
+    }, 0);
+    
+    debugLog(`Claude Mode: ${status}, outputLogPath: ${outputLogPath}, terminal: ${terminal ? terminal.name : 'none'}`);
+    
+    // Enable/disable sleep prevention and continuous monitoring
+    if (isAutoModeEnabled) {
+      startSleepPrevention();
+      startIdleMonitoring();
+      
+      // Reload log file if auto mode is resumed
+      if (outputLogPath) {
+        startFileMonitoring();
+      }
 
-    if (!terminal) {
-      vscode.window.showInformationMessage(
-        'Would you like to start Claude CLI?',
-        'Yes', 'No'
-      ).then(selection => {
-        if (selection === 'Yes') {
-          startClaude();
-        }
-      });
+      if (!terminal) {
+        vscode.window.showInformationMessage(
+          'Would you like to start Claude CLI?',
+          'Yes', 'No'
+        ).then(selection => {
+          if (selection === 'Yes') {
+            startClaude();
+          }
+        });
+      }
+      
+      // Start continuous monitoring if in continuous mode
+      if (isContinuousMode) {
+        startContinuousMonitoring();
+      }
+    } else {
+      stopSleepPrevention();
+      stopIdleMonitoring();
+      clearState();
     }
-    
-    // Start continuous monitoring if in continuous mode
-    if (isContinuousMode) {
-      startContinuousMonitoring();
-    }
-  } else {
-    stopSleepPrevention();
-    stopIdleMonitoring();
-    clearState();
-  }
+  }).catch(error => {
+    console.error('Failed to update extension state:', error);
+    // Fallback to synchronous updates
+    updateStatusBar();
+  });
 }
 
 function startSleepPrevention() {
@@ -505,10 +526,23 @@ function updateStatusBar() {
 function startStatusAnimation() {
   stopStatusAnimation(); // Clear any existing animation
   
+  // Defensive check to ensure statusBarItem exists
+  if (!statusBarItem) {
+    console.error('StatusBarItem not initialized');
+    return;
+  }
+  
   const terminalStatus = terminal ? ' (Running)' : '';
   const modeName = isContinuousMode ? 'Continuous' : 'Auto';
   
   let frames: string[];
+  
+  // PRIORITY: Wait animation takes precedence over everything else
+  if (isWaitingForDialog) {
+    // Wait animation is handled separately in startWaitAnimation, don't override here
+    return;
+  }
+  
   if (isContinuousMode) {
     // Check if continuous mode is paused
     if (isContinuousPaused) {
@@ -562,10 +596,25 @@ function startStatusAnimation() {
     intervalSpeed = 800; // Normal animation speed
   }
   
-  statusAnimationInterval = setInterval(() => {
-    animationFrame = (animationFrame + 1) % frames.length;
-    statusBarItem.text = frames[animationFrame];
-  }, intervalSpeed);
+  // Add error handling to prevent animation crashes
+  try {
+    statusAnimationInterval = setInterval(() => {
+      if (!statusBarItem) {
+        clearInterval(statusAnimationInterval!);
+        statusAnimationInterval = null;
+        return;
+      }
+      
+      animationFrame = (animationFrame + 1) % frames.length;
+      statusBarItem.text = frames[animationFrame];
+    }, intervalSpeed);
+  } catch (error) {
+    console.error('Failed to start status animation:', error);
+    // Fallback to static display
+    if (statusBarItem) {
+      statusBarItem.text = `[⇉] Claude ${modeName}${terminalStatus}`;
+    }
+  }
 }
 
 function stopStatusAnimation() {
@@ -576,7 +625,10 @@ function stopStatusAnimation() {
 }
 
 function startWaitAnimation() {
+  console.log(`🟡 startWaitAnimation called, current mode: ${isContinuousMode ? 'Continuous' : 'Auto'}, isWaitingForDialog: ${isWaitingForDialog}`);
+  
   if (isWaitingForDialog) {
+    console.log('⚠️ Already in wait animation, skipping');
     return; // Already in wait animation
   }
   
@@ -585,6 +637,7 @@ function startWaitAnimation() {
   isWaitingForDialog = true;
   stopStatusAnimation(); // Stop normal animation
   console.log('🟡 Entering Wait mode for', config.autoResponseDelaySeconds, 'seconds');
+  console.log('🟡 Wait animation starting, statusBarItem.text will be set to Wait frames');
   let countdown = config.autoResponseDelaySeconds;
   let waitFrame = 0;
   
@@ -921,18 +974,18 @@ async function readAndAnalyzeLogFile() {
   }
   
   try {
-    const fs = require('fs');
+    const fs = require('fs').promises;
     
-    // Check if file exists before reading
-    if (!fs.existsSync(outputLogPath)) {
-      debugLog('Log file does not exist yet');
-      return;
+    // Check if file exists asynchronously
+    try {
+      await fs.access(outputLogPath);
+    } catch {
+      return; // File doesn't exist
     }
     
-    const content = fs.readFileSync(outputLogPath, 'utf8');
+    const content = await fs.readFile(outputLogPath, 'utf8');
     
     if (content.length === 0) {
-      debugLog('Log file is empty');
       return;
     }
     
@@ -940,9 +993,6 @@ async function readAndAnalyzeLogFile() {
     const lines = content.split('\n');
     const trimmedLines = lines.slice(-100);
     const trimmedContent = trimmedLines.join('\n');
-    
-    debugLog('Read log file content length:', content.length);
-    debugLog('Last 200 chars:', JSON.stringify(trimmedContent.slice(-200)));
     
     // Only process if content has changed
     if (trimmedContent !== outputBuffer) {
@@ -953,24 +1003,23 @@ async function readAndAnalyzeLogFile() {
         lastOutputChange = Date.now();
       }
       
-      // If original content was more than 100 lines, rotate the log file
+      // If original content was more than 100 lines, rotate the log file asynchronously
       if (lines.length > 100) {
         try {
-          fs.writeFileSync(outputLogPath, cleanLogText(trimmedContent), 'utf8');
-          debugLog('Rotated log file to keep last 100 lines');
+          await fs.writeFile(outputLogPath, cleanLogText(trimmedContent), 'utf8');
         } catch (error) {
-          debugLog('Failed to rotate log file:', error);
+          // Silent: log rotation failed
         }
       }
       
-      // Only trigger pattern check in Auto mode (not Continuous mode)
-      if (!isContinuousMode) {
-        checkForPrompts(''); // Trigger pattern check
-      }
+      // Trigger pattern check for dialogs (both Auto and Continuous modes)
+      // Continuous mode needs this for Wait animation, but won't trigger auto-response
+      console.log(`🔄 Checking for prompts with buffer length: ${outputBuffer.length}`);
+      checkForPrompts(outputBuffer);
     }
     
   } catch (error) {
-    errorLog('Error reading log file:', error);
+    // Silent: ignore file read errors to prevent spam
   }
 }
 
@@ -1115,6 +1164,8 @@ function sendResponse(response: string) {
 // Terminal output monitoring is handled in startMonitoring function
 
 function checkForPrompts(output: string) {
+  console.log(`🔍 checkForPrompts called with output length: ${output.length}, current mode: ${isContinuousMode ? 'Continuous' : 'Auto'}`);
+  
   // Add to buffer
   outputBuffer += output;
   
@@ -1123,13 +1174,11 @@ function checkForPrompts(output: string) {
     outputBuffer = outputBuffer.slice(-10000);
   }
 
-  // Debug removed - too verbose
-
   // Check for box pattern (╭─)
   const hasBox = /╭─/.test(outputBuffer);
   
   if (hasBox) {
-    // Debug removed - too verbose
+    console.log('📦 Dialog box detected in buffer');
     
     const lowerOutput = outputBuffer.toLowerCase();
     
@@ -1137,37 +1186,46 @@ function checkForPrompts(output: string) {
     const hasDoYouWant = lowerOutput.includes('do you want to');
     const hasDontAskAgain = lowerOutput.includes("yes, and don't ask again this session");
     
+    console.log(`🔍 Dialog patterns - DoYouWant: ${hasDoYouWant}, DontAskAgain: ${hasDontAskAgain}`);
+    
     if (hasDoYouWant || hasDontAskAgain) {
-      console.log('Found actionable dialog pattern, starting 5-second wait...');
+      console.log('✅ Found actionable dialog pattern, starting wait animation...');
+      console.log(`📊 Current state - isContinuousMode: ${isContinuousMode}, isWaitingForDialog: ${isWaitingForDialog}`);
       
-      // Start wait animation only for actionable dialogs
+      // Start wait animation for actionable dialogs (both Auto and Continuous modes)
       startWaitAnimation();
       
       // Only set timeout if there isn't one already pending
       if (!pendingTimeout) {
         const config = getConfiguration();
         const delayMs = config.autoResponseDelaySeconds * 1000;
-        console.log(`Setting ${config.autoResponseDelaySeconds}-second timeout for auto-response...`);
+        console.log(`⏱️ Setting ${config.autoResponseDelaySeconds}-second timeout for response check...`);
         // Set timeout to check for auto-response after configured delay
         pendingTimeout = setTimeout(() => {
           checkForAutoResponse();
         }, delayMs);
       } else {
-        console.log('Timeout already pending, not setting new one');
+        console.log('⏭️ Timeout already pending, not setting new one');
       }
     } else {
-      // Debug removed - too verbose
-      
-      // Continuous checking is now handled by dedicated interval
+      console.log('❌ No actionable dialog patterns found');
+    }
+  } else {
+    // Only log when there's actual content to process
+    if (output.length > 0) {
+      console.log('📄 No dialog box pattern found in buffer');
     }
   }
 }
 
 function checkForAutoResponse() {
-  console.log('Checking for auto-response after 5-second wait...');
+  console.log('🔍 checkForAutoResponse: Starting auto-response check...');
+  console.log(`🔍 Mode state: isContinuousMode=${isContinuousMode}, isAutoModeEnabled=${isAutoModeEnabled}`);
   
   // Stop wait animation first
   stopWaitAnimation();
+  
+  // Continuous mode also needs to auto-respond to dialogs
   
   if (!isAutoModeEnabled || !terminal) {
     console.log('Auto mode disabled or no terminal');
@@ -1252,7 +1310,6 @@ function checkForAutoResponse() {
   }
   
   console.log('No recognized prompt pattern found in buffer');
-  // Silent: Buffer content too verbose for log
   
   // Clear state even if no pattern found to prevent stuck animations
   clearState();
@@ -1426,11 +1483,9 @@ function startContinuousCountdown() {
   
   continuousCountdownInterval = setInterval(() => {
     if (continuousEndTime > 0 && Date.now() < continuousEndTime) {
-      // Skip update if in wait mode to prevent flickering
-      if (!isWaitingForDialog) {
-        // Update status bar with new countdown
-        updateStatusBar();
-      }
+      // Always update status bar - don't skip during wait mode
+      // The wait animation will temporarily override this display
+      updateStatusBar();
     } else {
       // Countdown finished
       stopContinuousCountdown();

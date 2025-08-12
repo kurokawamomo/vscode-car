@@ -2,6 +2,20 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.2.0] - 2025-08-12
+
+### 🐛 Fixed
+- **Critical UI Hang Issue**: Fixed "Starting Extension..." hang when clicking status bar during heavy operations
+- **Status Bar Animation Freeze**: Resolved animation stopping issue with proper error handling and null checks
+- **Blocking State Updates**: Converted synchronous globalState.update() to async Promise-based updates
+- **File I/O Blocking**: Replaced fs.existsSync() with async fs.promises.access() to prevent UI thread blocking
+
+### 🛠️ Technical
+- **Non-blocking Notifications**: Dashboard notifications now use setTimeout() to defer UI updates
+- **Robust Animation System**: Added try-catch blocks and defensive checks in status animation
+- **Async State Management**: All extension state updates now use Promise.all() for non-blocking execution
+- **Error Recovery**: Fallback mechanisms for animation failures with static display options
+
 ## [1.1.0] - 2025-08-11
 
 ### ✨ Added
