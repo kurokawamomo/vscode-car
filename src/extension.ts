@@ -14,6 +14,8 @@ let lastFileReadTime: number = 0;
 const FILE_READ_THROTTLE_MS = 500; // Throttle file reads to max once per 500ms
 let lastFileWatchTime: number = 0;
 const FILE_WATCH_THROTTLE_MS = 1000; // Throttle file watch events to max once per 1000ms
+let lastOutputContent: string = '';
+let lastOutputUpdateTime: number = 0;
 let lastAutoResponse: number = 0;
 let statusAnimationInterval: NodeJS.Timeout | null = null;
 let waitAnimationInterval: NodeJS.Timeout | null = null;
@@ -700,7 +702,17 @@ function stopWaitAnimation() {
 }
 
 function startClaude() {
-  // If terminal already exists, stop current monitoring and restart
+  // Close any existing Claude CLI terminals before starting new one
+  const existingTerminals = vscode.window.terminals.filter(t => 
+    t.name.startsWith('Claude CLI') && t !== terminal
+  );
+  
+  if (existingTerminals.length > 0) {
+    console.log(`Closing ${existingTerminals.length} existing Claude CLI terminals`);
+    existingTerminals.forEach(t => t.dispose());
+  }
+
+  // If our tracked terminal exists, stop current monitoring and restart
   if (terminal) {
     vscode.window.showInformationMessage('Stopping existing Claude terminal and starting new one...');
     
@@ -734,9 +746,12 @@ function startClaude() {
     // Setup output log file
     setupOutputLogging();
     
+    // Initialize output tracking for smart arrow key refresh
+    lastOutputUpdateTime = Date.now();
+    
     // Create regular terminal for user interaction
     terminal = vscode.window.createTerminal({
-      name: 'Claude CLI (Auto Mode)',
+      name: `Claude CLI (Auto Mode) ${new Date().toLocaleTimeString('en-US', { hour12: false })}`,
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
     });
     
@@ -933,16 +948,25 @@ function startFileMonitoring() {
       }
     }, 10000); // Backup check every 10 seconds
 
-    // Set up periodic terminal buffer refresh with arrow down key (every 60 seconds)
+    // Set up smart terminal buffer refresh with arrow down key (every 30 seconds)
     const terminalRefreshInterval = setInterval(() => {
       const config = getConfiguration();
       if (isAutoModeEnabled && terminal && config.enableTerminalBufferRefresh) {
-        debugLog('Sending arrow down key to refresh terminal buffer');
-        terminal.sendText('\u001b[B', false); // Arrow down key
+        // Only send arrow key if output hasn't changed for 30+ seconds
+        const now = Date.now();
+        const timeSinceLastOutput = now - lastOutputUpdateTime;
+        
+        if (timeSinceLastOutput >= 30000) { // 30 seconds
+          console.log('Sending arrow down key - no output changes for 30+ seconds');
+          const targetTerminal = findClaudeTerminal();
+          if (targetTerminal) {
+            targetTerminal.sendText('\u001b[B', false); // Arrow down key
+          }
+        }
       } else if (!isAutoModeEnabled) {
         clearInterval(terminalRefreshInterval);
       }
-    }, 60000); // Every 60 seconds
+    }, 30000); // Check every 30 seconds
 
     // UNIFIED CONTINUOUS MONITORING: Always check for continuous conditions when auto mode is enabled
     if (continuousCheckInterval) {
@@ -1019,6 +1043,12 @@ async function readAndAnalyzeLogFile() {
     // Only process if content has changed
     if (trimmedContent !== outputBuffer) {
       outputBuffer = cleanLogText(trimmedContent);
+      
+      // Track output content changes for smart arrow key refresh
+      if (trimmedContent !== lastOutputContent) {
+        lastOutputContent = trimmedContent;
+        lastOutputUpdateTime = Date.now();
+      }
       
       // Update last output change time for continuous mode
       if (isContinuousMode) {
@@ -1144,20 +1174,47 @@ function analyzeDialogPattern(content: string): string | null {
 
 // Removed detectAndAutoRespond function - functionality replaced by triggerManualDetection
 
+/**
+ * Find the best Claude CLI terminal to send commands to
+ * Priority: 1) Our tracked terminal if still active, 2) Active terminal if it's Claude CLI, 3) Most recent Claude CLI terminal
+ */
+function findClaudeTerminal(): vscode.Terminal | null {
+  // Check if our tracked terminal is still alive and active
+  if (terminal && vscode.window.terminals.includes(terminal)) {
+    return terminal;
+  }
+  
+  // Check if active terminal is a Claude CLI terminal
+  const activeTerminal = vscode.window.activeTerminal;
+  if (activeTerminal && activeTerminal.name.startsWith('Claude CLI')) {
+    console.log(`Using active Claude CLI terminal: ${activeTerminal.name}`);
+    // Update our reference to the active terminal
+    terminal = activeTerminal;
+    return activeTerminal;
+  }
+  
+  // Find the most recent Claude CLI terminal
+  const claudeTerminals = vscode.window.terminals.filter(t => 
+    t.name.startsWith('Claude CLI')
+  );
+  
+  if (claudeTerminals.length > 0) {
+    // Use the last one in the list (most recently created)
+    const mostRecentTerminal = claudeTerminals[claudeTerminals.length - 1];
+    console.log(`Using most recent Claude CLI terminal: ${mostRecentTerminal.name}`);
+    terminal = mostRecentTerminal;
+    return mostRecentTerminal;
+  }
+  
+  console.log('No Claude CLI terminal found');
+  return null;
+}
+
 function sendResponse(response: string) {
   console.log(`sendResponse called with: ${response}`);
-  console.log(`terminal exists: ${!!terminal}`);
-  console.log(`terminal name: ${terminal?.name}`);
-  console.log(`isAutoModeEnabled: ${isAutoModeEnabled}`);
   
-  // Check active terminal
-  const activeTerminal = vscode.window.activeTerminal;
-  console.log(`active terminal exists: ${!!activeTerminal}`);
-  console.log(`active terminal name: ${activeTerminal?.name}`);
-  console.log(`are they the same terminal: ${terminal === activeTerminal}`);
-  
-  // Try sending to active terminal if it's different from our stored terminal
-  const targetTerminal = activeTerminal || terminal;
+  // Find the best Claude CLI terminal to send response to
+  const targetTerminal = findClaudeTerminal();
   
   if (targetTerminal) {
     console.log(`Sending "${response}" to terminal: ${targetTerminal.name}`);
@@ -1327,7 +1384,12 @@ function checkForAutoResponse() {
 }
 
 function autoSendResponse(response: string) {
-  if (!terminal) return;
+  const targetTerminal = findClaudeTerminal();
+  if (!targetTerminal) {
+    console.log('No Claude CLI terminal found for auto-response');
+    vscode.window.showErrorMessage('No Claude CLI terminal found for auto-response');
+    return;
+  }
   
   console.log(`Auto-sending response: ${response}`);
   updateActivityTime(); // User activity detected
@@ -1341,7 +1403,7 @@ function autoSendResponse(response: string) {
   // Use the working method: Send as individual keystrokes
   response.split('').forEach((char, index) => {
     setTimeout(() => {
-      terminal!.sendText(char, false);
+      targetTerminal.sendText(char, false);
     }, index * 50);
   });
   // Enter key removed - not needed
@@ -1512,13 +1574,7 @@ function stopContinuousCountdown() {
   continuousEndTime = 0;
 }
 
-function resetContinuousTimer() {
-  if (isContinuousMode) {
-    lastOutputChange = Date.now();
-    console.log('Output changed - stopping continuous countdown');
-    stopContinuousMonitoring(); // Stop countdown when output changes
-  }
-}
+
 
 // Cache for last dialog content to avoid re-reading if unchanged
 let lastDialogCache: { content: string; timestamp: number } | null = null;
@@ -1862,11 +1918,7 @@ function checkUsageLimit() {
   }
 }
 
-function pauseContinuousMode() {
-  // This function is now deprecated - kept for backward compatibility
-  // Use pauseContinuousModeForFast() instead
-  pauseContinuousModeForFast();
-}
+
 
 function resumeContinuousMode() {
   if (!isContinuousPaused) return;

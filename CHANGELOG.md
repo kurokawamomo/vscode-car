@@ -2,6 +2,30 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.4.0] - 2025-08-12
+
+### 🎯 Smart Terminal Management
+- **Intelligent Arrow Key Refresh**: Only sends arrow down key when output unchanged for 30+ seconds
+- **Smart Terminal Detection**: Automatically identifies and targets the correct Claude CLI terminal
+- **Auto Terminal Cleanup**: Automatically closes old Claude CLI terminals when starting new ones
+- **Terminal Timestamping**: Adds timestamps to terminal names for better identification
+
+### 🔧 Enhanced Key Sending
+- **Reliable Response Delivery**: `findClaudeTerminal()` function ensures responses reach the correct terminal
+- **Multi-Terminal Support**: Works correctly even with multiple terminals open
+- **Focus-Independent Operation**: Sends keys to Claude terminal regardless of VS Code focus
+- **Reduced Input Interference**: Arrow key refresh no longer interrupts user typing
+
+### 🛠️ Code Quality Improvements
+- **Cleanup Unused Functions**: Removed deprecated `resetContinuousTimer` and `pauseContinuousMode` functions
+- **TypeScript Compliance**: Fixed all TypeScript warnings for better code quality
+- **Performance Optimizations**: Reduced unnecessary function calls and improved memory usage
+
+### 🐛 Fixed
+- **Terminal Targeting Issues**: Fixed responses being sent to wrong terminal when multiple Claude terminals exist
+- **Arrow Key Spam**: Eliminated frequent arrow key presses that interfered with user input
+- **Terminal Reference Management**: Improved tracking of active Claude CLI terminals
+
 ## [1.3.0] - 2025-08-12
 
 ### 🚀 Performance

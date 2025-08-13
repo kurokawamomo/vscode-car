@@ -26,6 +26,7 @@ Now you can safely take a nap or do the dishes while your code finishes itself.*
 ### 🛡️ Safety & System
 - **Sleep Prevention**: Auto caffeinate/powercfg with 10min idle pause  
 - **Destructive Detection**: Blocks `rm -rf`, fork bombs, etc.
+- **Smart Terminal**: Auto-targets correct Claude terminal, prevents input interference
 - **Cross-Platform**: macOS, Windows, Linux support
 
 ## Installation
