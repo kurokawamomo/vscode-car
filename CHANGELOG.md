@@ -2,6 +2,25 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.5.0] - 2025-08-14
+
+### 🧹 Memory Leak Prevention
+- **Centralized Interval Management**: Implemented comprehensive tracking of all intervals and timeouts
+- **Automatic Cleanup**: All timers are now properly cleaned up when extension deactivates
+- **Memory Usage Optimization**: Fixed high CPU usage caused by uncleaned intervals
+- **Performance Monitoring**: Added logging for interval/timeout cleanup during deactivation
+
+### 🔧 Technical Improvements
+- **Managed Timers**: All `setInterval`/`setTimeout` calls now use centralized `createInterval`/`createTimeout` functions
+- **Safe Cleanup**: All `clearInterval`/`clearTimeout` calls now use managed cleanup functions
+- **Resource Tracking**: Active intervals and timeouts are tracked in global Sets for proper disposal
+- **Extension Lifecycle**: Improved deactivation process to prevent memory leaks
+
+### 🐛 Bug Fixes
+- **Fixed Memory Leak**: Extension CPU usage now matches other extensions (previously 10x higher)
+- **Improved Stability**: Eliminated orphaned timers that continued running after mode changes
+- **Resource Management**: Proper cleanup when terminals are closed or extension is disabled
+
 ## [1.4.0] - 2025-08-12
 
 ### 🎯 Smart Terminal Management

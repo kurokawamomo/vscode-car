@@ -2,6 +2,49 @@ import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
 import { debug } from 'console';
 
+// Centralized interval and timeout management
+const activeIntervals = new Set<NodeJS.Timeout>();
+const activeTimeouts = new Set<NodeJS.Timeout>();
+
+function createInterval(callback: () => void, ms: number): NodeJS.Timeout {
+  const interval = setInterval(callback, ms);
+  activeIntervals.add(interval);
+  return interval;
+}
+
+function createTimeout(callback: () => void, ms: number): NodeJS.Timeout {
+  const timeout = setTimeout(() => {
+    activeTimeouts.delete(timeout);
+    callback();
+  }, ms);
+  activeTimeouts.add(timeout);
+  return timeout;
+}
+
+function clearManagedInterval(interval: NodeJS.Timeout | null): void {
+  if (interval) {
+    clearInterval(interval);
+    activeIntervals.delete(interval);
+  }
+}
+
+function clearManagedTimeout(timeout: NodeJS.Timeout | null): void {
+  if (timeout) {
+    clearTimeout(timeout);
+    activeTimeouts.delete(timeout);
+  }
+}
+
+function clearAllIntervals(): void {
+  activeIntervals.forEach(interval => clearInterval(interval));
+  activeIntervals.clear();
+}
+
+function clearAllTimeouts(): void {
+  activeTimeouts.forEach(timeout => clearTimeout(timeout));
+  activeTimeouts.clear();
+}
+
 let statusBarItem: vscode.StatusBarItem;
 let isAutoModeEnabled: boolean = false;
 let context: vscode.ExtensionContext;
@@ -350,7 +393,7 @@ function toggleAutoMode() {
     }
     
     // Defer dashboard notification to next tick to prevent blocking
-    setTimeout(() => {
+    createTimeout(() => {
       showDashboardNotification();
     }, 0);
     
@@ -490,11 +533,11 @@ function checkIdleTimeout() {
 
 function startIdleMonitoring() {
   if (idleCheckInterval) {
-    clearInterval(idleCheckInterval);
+    clearManagedInterval(idleCheckInterval);
   }
   
   // Check every minute
-  idleCheckInterval = setInterval(() => {
+  idleCheckInterval = createInterval(() => {
     checkIdleTimeout();
   }, 60000);
   
@@ -504,7 +547,7 @@ function startIdleMonitoring() {
 
 function stopIdleMonitoring() {
   if (idleCheckInterval) {
-    clearInterval(idleCheckInterval);
+    clearManagedInterval(idleCheckInterval);
     idleCheckInterval = null;
   }
   isCaffeinePaused = false;
@@ -604,9 +647,9 @@ function startStatusAnimation() {
   
   // Add error handling to prevent animation crashes
   try {
-    statusAnimationInterval = setInterval(() => {
+    statusAnimationInterval = createInterval(() => {
       if (!statusBarItem) {
-        clearInterval(statusAnimationInterval!);
+        clearManagedInterval(statusAnimationInterval!);
         statusAnimationInterval = null;
         return;
       }
@@ -625,7 +668,7 @@ function startStatusAnimation() {
 
 function stopStatusAnimation() {
   if (statusAnimationInterval) {
-    clearInterval(statusAnimationInterval);
+    clearManagedInterval(statusAnimationInterval);
     statusAnimationInterval = null;
   }
 }
@@ -656,7 +699,7 @@ function startWaitAnimation() {
   statusBarItem.text = frames[waitFrame];
   
   // Fast animation with countdown
-  waitAnimationInterval = setInterval(() => {
+  waitAnimationInterval = createInterval(() => {
     waitFrame = (waitFrame + 1) % frames.length;
     
     // Update frames with current countdown
@@ -670,12 +713,12 @@ function startWaitAnimation() {
   }, 100); // Faster animation (100ms instead of 200ms)
   
   // Countdown timer (every second)
-  countdownInterval = setInterval(() => {
+  countdownInterval = createInterval(() => {
     countdown--;
     if (countdown <= 0) {
       countdown = 0; // Ensure it doesn't go negative
       if (countdownInterval) {
-        clearInterval(countdownInterval);
+        clearManagedInterval(countdownInterval);
         countdownInterval = null;
       }
     }
@@ -684,12 +727,12 @@ function startWaitAnimation() {
 
 function stopWaitAnimation() {
   if (waitAnimationInterval) {
-    clearInterval(waitAnimationInterval);
+    clearManagedInterval(waitAnimationInterval);
     waitAnimationInterval = null;
   }
   
   if (countdownInterval) {
-    clearInterval(countdownInterval as NodeJS.Timeout);
+    clearManagedInterval(countdownInterval as NodeJS.Timeout);
     countdownInterval = null;
   }
   
@@ -769,7 +812,7 @@ function startClaude() {
     context.subscriptions.push(terminalCloseDisposable);
     
     // Also check terminal status periodically as backup
-    const terminalCheckInterval = setInterval(() => {
+    const terminalCheckInterval = createInterval(() => {
       if (terminal) {
         // Check if terminal still exists in the active terminals
         const activeTerminals = vscode.window.terminals;
@@ -777,11 +820,11 @@ function startClaude() {
         
         if (!terminalExists) {
           console.log('Claude terminal no longer exists, cleaning up');
-          clearInterval(terminalCheckInterval);
+          clearManagedInterval(terminalCheckInterval);
           cleanupTerminal();
         }
       } else {
-        clearInterval(terminalCheckInterval);
+        clearManagedInterval(terminalCheckInterval);
       }
     }, 2000); // Check every 2 seconds
     
@@ -936,7 +979,7 @@ function startFileMonitoring() {
     console.log('File monitoring started successfully');
     
     // Add lightweight backup check in case FileWatcher fails
-    const backupCheckInterval = setInterval(() => {
+    const backupCheckInterval = createInterval(() => {
       if (isAutoModeEnabled && outputLogPath) {
         // Only do backup check if FileWatcher hasn't triggered recently
         const now = Date.now();
@@ -944,12 +987,12 @@ function startFileMonitoring() {
           readAndAnalyzeLogFile();
         }
       } else if (!isAutoModeEnabled) {
-        clearInterval(backupCheckInterval);
+        clearManagedInterval(backupCheckInterval);
       }
     }, 10000); // Backup check every 10 seconds
 
     // Set up smart terminal buffer refresh with arrow down key (every 30 seconds)
-    const terminalRefreshInterval = setInterval(() => {
+    const terminalRefreshInterval = createInterval(() => {
       const config = getConfiguration();
       if (isAutoModeEnabled && terminal && config.enableTerminalBufferRefresh) {
         // Only send arrow key if output hasn't changed for 30+ seconds
@@ -964,16 +1007,16 @@ function startFileMonitoring() {
           }
         }
       } else if (!isAutoModeEnabled) {
-        clearInterval(terminalRefreshInterval);
+        clearManagedInterval(terminalRefreshInterval);
       }
     }, 30000); // Check every 30 seconds
 
     // UNIFIED CONTINUOUS MONITORING: Always check for continuous conditions when auto mode is enabled
     if (continuousCheckInterval) {
-      clearInterval(continuousCheckInterval);
+      clearManagedInterval(continuousCheckInterval);
     }
     
-    continuousCheckInterval = setInterval(() => {
+    continuousCheckInterval = createInterval(() => {
       if (isAutoModeEnabled && outputLogPath) {
         // Silent continuous checking
         checkForIdlePromptInLog().catch(() => {
@@ -987,7 +1030,7 @@ function startFileMonitoring() {
         checkUsageLimit();
       } else if (!isAutoModeEnabled) {
         if (continuousCheckInterval) {
-          clearInterval(continuousCheckInterval);
+          clearManagedInterval(continuousCheckInterval);
           continuousCheckInterval = null;
         }
       }
@@ -996,7 +1039,7 @@ function startFileMonitoring() {
     // Do initial check immediately
     if (isAutoModeEnabled) {
       // Silent: Initial continuous check
-      setTimeout(() => {
+      createTimeout(() => {
         checkForIdlePromptInLog().catch(() => {
           // Ignore errors silently
         });
@@ -1275,7 +1318,7 @@ function checkForPrompts(output: string) {
         const delayMs = config.autoResponseDelaySeconds * 1000;
         console.log(`⏱️ Setting ${config.autoResponseDelaySeconds}-second timeout for response check...`);
         // Set timeout to check for auto-response after configured delay
-        pendingTimeout = setTimeout(() => {
+        pendingTimeout = createTimeout(() => {
           checkForAutoResponse();
         }, delayMs);
       } else {
@@ -1326,7 +1369,7 @@ function checkForAutoResponse() {
         );
         // Clear only the timeout, not the entire state
         if (pendingTimeout) {
-          clearTimeout(pendingTimeout);
+          clearManagedTimeout(pendingTimeout);
           pendingTimeout = null;
         }
         return;
@@ -1362,7 +1405,7 @@ function checkForAutoResponse() {
         );
         // Clear only the timeout, not the entire state
         if (pendingTimeout) {
-          clearTimeout(pendingTimeout);
+          clearManagedTimeout(pendingTimeout);
           pendingTimeout = null;
         }
         return;
@@ -1402,7 +1445,7 @@ function autoSendResponse(response: string) {
   
   // Use the working method: Send as individual keystrokes
   response.split('').forEach((char, index) => {
-    setTimeout(() => {
+    createTimeout(() => {
       targetTerminal.sendText(char, false);
     }, index * 50);
   });
@@ -1506,7 +1549,7 @@ function startContinuousCountdownForIdlePrompt() {
   
   // Clear any existing timeout first, but preserve countdown state
   if (continuousTimeout) {
-    clearTimeout(continuousTimeout);
+    clearManagedTimeout(continuousTimeout);
     continuousTimeout = null;
   }
   
@@ -1514,7 +1557,7 @@ function startContinuousCountdownForIdlePrompt() {
   lastOutputChange = Date.now();
   continuousEndTime = Date.now() + timeoutMs;
   
-  continuousTimeout = setTimeout(() => {
+  continuousTimeout = createTimeout(() => {
     sendContinueCommand();
   }, timeoutMs);
   
@@ -1533,7 +1576,7 @@ function startContinuousMonitoring() {
 
 function stopContinuousMonitoring() {
   if (continuousTimeout) {
-    clearTimeout(continuousTimeout);
+    clearManagedTimeout(continuousTimeout);
     continuousTimeout = null;
   }
   
@@ -1550,11 +1593,11 @@ function stopContinuousMonitoring() {
 function startContinuousCountdown() {
   // Clear any existing countdown interval without resetting endTime
   if (continuousCountdownInterval) {
-    clearInterval(continuousCountdownInterval);
+    clearManagedInterval(continuousCountdownInterval);
     continuousCountdownInterval = null;
   }
   
-  continuousCountdownInterval = setInterval(() => {
+  continuousCountdownInterval = createInterval(() => {
     if (continuousEndTime > 0 && Date.now() < continuousEndTime) {
       // Always update status bar - don't skip during wait mode
       // The wait animation will temporarily override this display
@@ -1568,7 +1611,7 @@ function startContinuousCountdown() {
 
 function stopContinuousCountdown() {
   if (continuousCountdownInterval) {
-    clearInterval(continuousCountdownInterval);
+    clearManagedInterval(continuousCountdownInterval);
     continuousCountdownInterval = null;
   }
   continuousEndTime = 0;
@@ -1735,17 +1778,17 @@ function sendContinueCommand() {
   
   // Send as individual characters to ensure proper handling
   continueText.split('').forEach((char, index) => {
-    setTimeout(() => {
+    createTimeout(() => {
       terminal!.sendText(char, false);
     }, index * 50);
   });
   
   // Send newline after the command
-  setTimeout(() => {
+  createTimeout(() => {
     terminal!.sendText('\n', false);
     
     // Record continue time AFTER sending the command to avoid immediate timing check
-    setTimeout(() => {
+    createTimeout(() => {
       lastContinueTime = Date.now();
     }, 500); // Wait 500ms after command is sent
   }, continueText.length * 50 + 100);
@@ -2026,14 +2069,14 @@ function clearState() {
   outputBuffer = '';
   lastProcessedOutput = '';
   if (pendingTimeout) {
-    clearTimeout(pendingTimeout);
+    clearManagedTimeout(pendingTimeout);
     pendingTimeout = null;
   }
   // Stop continuous monitoring and countdown
   stopContinuousMonitoring();
   // Clear continuous check interval
   if (continuousCheckInterval) {
-    clearInterval(continuousCheckInterval);
+    clearManagedInterval(continuousCheckInterval);
     continuousCheckInterval = null;
   }
   // Reset failure counters
@@ -2058,6 +2101,12 @@ export function deactivate() {
   // Stop sleep prevention
   stopSleepPrevention();
   stopIdleMonitoring();
+  
+  // Clear all managed intervals and timeouts to prevent memory leaks
+  clearAllIntervals();
+  clearAllTimeouts();
+  
+  console.log(`🧹 Extension deactivated - cleared ${activeIntervals.size} intervals and ${activeTimeouts.size} timeouts`);
   
   // Cleanup file watcher
   if (fileWatcher) {
