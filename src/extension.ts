@@ -56,7 +56,7 @@ let pendingTimeout: NodeJS.Timeout | null = null;
 let lastFileReadTime: number = 0;
 const FILE_READ_THROTTLE_MS = 500; // Throttle file reads to max once per 500ms
 let lastFileWatchTime: number = 0;
-const FILE_WATCH_THROTTLE_MS = 1000; // Throttle file watch events to max once per 1000ms
+const FILE_WATCH_THROTTLE_MS = 2000; // Throttle file watch events to max once per 2000ms
 let lastOutputContent: string = '';
 let lastOutputUpdateTime: number = 0;
 let lastAutoResponse: number = 0;
@@ -1062,6 +1062,8 @@ async function readAndAnalyzeLogFile() {
   }
   lastFileReadTime = now;
   
+  const startTime = debugMode ? Date.now() : 0;
+  
   try {
     const fs = require('fs').promises;
     
@@ -1072,15 +1074,29 @@ async function readAndAnalyzeLogFile() {
       return; // File doesn't exist
     }
     
-    const content = await fs.readFile(outputLogPath, 'utf8');
+    // Read only the last 10KB of the file for performance
+    const stats = await fs.stat(outputLogPath);
+    const fileSize = stats.size;
     
-    if (content.length === 0) {
+    if (fileSize === 0) {
       return;
     }
     
-    // Keep only last 100 lines to manage file size
+    // Read only the last portion of the file
+    const bytesToRead = Math.min(fileSize, 10240); // 10KB max
+    const readStream = require('fs').createReadStream(outputLogPath, {
+      start: Math.max(0, fileSize - bytesToRead),
+      encoding: 'utf8'
+    });
+    
+    let content = '';
+    for await (const chunk of readStream) {
+      content += chunk;
+    }
+    
+    // Keep only last 50 lines to manage file size and improve performance
     const lines = content.split('\n');
-    const trimmedLines = lines.slice(-100);
+    const trimmedLines = lines.slice(-50);
     const trimmedContent = trimmedLines.join('\n');
     
     // Only process if content has changed
@@ -1098,8 +1114,8 @@ async function readAndAnalyzeLogFile() {
         lastOutputChange = Date.now();
       }
       
-      // If original content was more than 100 lines, rotate the log file asynchronously
-      if (lines.length > 100) {
+      // If original content was more than 50 lines, rotate the log file asynchronously
+      if (lines.length > 50) {
         try {
           await fs.writeFile(outputLogPath, cleanLogText(trimmedContent), 'utf8');
         } catch (error) {
@@ -1112,8 +1128,17 @@ async function readAndAnalyzeLogFile() {
       checkForPrompts(outputBuffer);
     }
     
+    if (debugMode && startTime) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > 100) {
+        console.log(`⚠️ readAndAnalyzeLogFile took ${elapsed}ms`);
+      }
+    }
   } catch (error) {
     // Silent: ignore file read errors to prevent spam
+    if (debugMode) {
+      console.error('Error in readAndAnalyzeLogFile:', error);
+    }
   }
 }
 
@@ -1290,9 +1315,9 @@ function checkForPrompts(output: string) {
   // Add to buffer
   outputBuffer += output;
   
-  // Keep buffer manageable (last 10000 characters)
-  if (outputBuffer.length > 10000) {
-    outputBuffer = outputBuffer.slice(-10000);
+  // Keep buffer manageable (last 5000 characters for better performance)
+  if (outputBuffer.length > 5000) {
+    outputBuffer = outputBuffer.slice(-5000);
   }
 
   // Check for box pattern (╭─)
@@ -1514,18 +1539,41 @@ function extractDialogFromLog(): string {
   }
 }
 
+// Cache for cleaned text to avoid reprocessing
+const cleanedTextCache = new Map<string, string>();
+const CACHE_MAX_SIZE = 100;
+
 function cleanLogText(text: string): string {
-  return text
-    // Remove NUL characters (0x00)
-    .replace(/\x00/g, '')
-    // Remove ESC character (0x1B) and ANSI escape sequences
-    .replace(/\x1b/g, '')
-    .replace(/\[[0-9;]*[mGKHJC]/g, '')
-    .replace(/\[[0-9;]*[A-Za-z]/g, '')
-    // Remove specific sequences like [2m│
-    .replace(/\[[0-9]+m[│┌┐└┘├┤┬┴┼]/g, '')
-    // Remove other control characters except newlines and tabs
-    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  // Check cache first
+  const cached = cleanedTextCache.get(text);
+  if (cached !== undefined) {
+    return cached;
+  }
+  
+  // For very large texts, only process the last part
+  let processText = text;
+  if (text.length > 5000) {
+    processText = text.slice(-5000);
+  }
+  
+  // Combine all regex operations into a single pass for better performance
+  const cleaned = processText.replace(
+    /\x00|\x1b|\[[0-9;]*[mGKHJCA-Za-z]|\[[0-9]+m[│┌┐└┘├┤┬┴┼]|[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g,
+    ''
+  );
+  
+  // Manage cache size
+  if (cleanedTextCache.size >= CACHE_MAX_SIZE) {
+    const firstKey = cleanedTextCache.keys().next().value;
+    if (firstKey !== undefined) {
+      cleanedTextCache.delete(firstKey);
+    }
+  }
+  
+  // Cache the result
+  cleanedTextCache.set(text, cleaned);
+  
+  return cleaned;
 }
 
 function startContinuousCountdownForIdlePrompt() {
@@ -2105,6 +2153,9 @@ export function deactivate() {
   // Clear all managed intervals and timeouts to prevent memory leaks
   clearAllIntervals();
   clearAllTimeouts();
+  
+  // Clear caches to free memory
+  cleanedTextCache.clear();
   
   console.log(`🧹 Extension deactivated - cleared ${activeIntervals.size} intervals and ${activeTimeouts.size} timeouts`);
   

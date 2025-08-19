@@ -2,6 +2,26 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.6.0] - 2025-08-19
+
+### 🚀 Performance Optimization
+- **Enhanced Text Processing**: Optimized `cleanLogText` function with regex consolidation and caching
+- **Smart File Reading**: Limited file reads to last 10KB and 50 lines instead of full file processing
+- **Cache Management**: Added LRU cache for cleaned text to avoid reprocessing identical content
+- **Throttling Improvements**: Increased FileWatcher throttling from 1s to 2s for better stability
+
+### 📈 Processing Efficiency
+- **Buffer Size Reduction**: Reduced output buffer from 10KB to 5KB for faster processing
+- **Stream Reading**: Implemented efficient stream reading for large log files
+- **Performance Monitoring**: Added debug timing information for slow operations (>100ms)
+- **Memory Management**: Automatic cache cleanup on extension deactivation
+
+### 🐛 Bug Fixes
+- **Eliminated Regex Chaining**: Combined multiple regex operations into single pass
+- **Reduced CPU Spikes**: Optimized frequent text cleaning operations
+- **File I/O Optimization**: Prevented reading entire large files multiple times
+- **Cache Size Control**: Implemented cache size limits to prevent memory bloat
+
 ## [1.5.0] - 2025-08-14
 
 ### 🧹 Memory Leak Prevention
