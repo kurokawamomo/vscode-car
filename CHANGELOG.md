@@ -2,6 +2,31 @@
 
 All notable changes to the "claude-auto-responder" extension will be documented in this file.
 
+## [1.7.0] - 2025-10-30
+
+### 🚀 Node Version Auto-Detection
+- **Automatic Node Version Retry**: Added intelligent Node version detection when `nodenv: claude: command not found` occurs
+- **Predefined Version Support**: Automatically tries Node versions `20.19.3` and `16.0.0` in sequence
+- **Cross-Platform Retry Logic**: Implemented retry logic for macOS, Windows, and Linux environments
+- **Smart Fallback Chain**: First tries default environment, then cycles through available Node versions
+
+### 🔧 Enhanced Claude CLI Startup
+- **Seamless Version Switching**: Automatically sets `NODENV_VERSION` environment variable for each retry attempt
+- **Intelligent Command Chaining**: Uses shell-appropriate command chaining (`||` for bash, conditional logic for PowerShell)
+- **Clear User Feedback**: Terminal displays which Node version is being attempted during startup
+- **Robust Error Handling**: Graceful fallback through multiple Node environments until one succeeds
+
+### 🛠️ Technical Improvements
+- **New Function**: `startClaudeWithRetry()` handles all Node version detection and retry logic
+- **Environment Variable Management**: Proper isolation of Node environment variables during retry attempts
+- **Platform-Specific Commands**: Optimized command generation for each operating system
+- **Startup Reliability**: Eliminates manual Node version switching when Claude CLI installation varies across versions
+
+### 🐛 Bug Fixes
+- **Fixed Node Version Conflicts**: Resolves `nodenv: claude: command not found` errors automatically
+- **Eliminated Manual Intervention**: No longer requires users to manually set Node versions
+- **Improved Startup Success Rate**: Significantly higher chance of successful Claude CLI startup across different environments
+
 ## [1.6.0] - 2025-08-19
 
 ### 🚀 Performance Optimization

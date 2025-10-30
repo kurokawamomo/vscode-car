@@ -828,24 +828,8 @@ function startClaude() {
       }
     }, 2000); // Check every 2 seconds
     
-    // Start Claude with output logging
-    // Use different approach based on OS and ignore local node version managers
-    const os = require('os');
-    
-    // Set PATH to prioritize global node version and ignore local version managers
-    const globalNodeSetup = 'export NODENV_VERSION="" NODEENV_VERSION="" NVM_DIR="" NODE_VERSION_PREFIX=""';
-    
-    if (os.platform() === 'darwin') {
-      // macOS: use script command with global node setup
-      // Try --continue first, fallback to regular claude if no conversation found
-      terminal.sendText(`${globalNodeSetup} && script -q "${outputLogPath}" bash -c "claude --continue || claude"`);
-    } else if (os.platform() === 'win32') {
-      // Windows: use PowerShell with Tee-Object for logging
-      terminal.sendText(`$env:NODENV_VERSION=""; $env:NODE_VERSION_PREFIX=""; (claude --continue; if (!$?) { claude }) | Tee-Object -FilePath "${outputLogPath}"`);
-    } else {
-      // Linux: use script command with different syntax and global node setup
-      terminal.sendText(`${globalNodeSetup} && script -q -c "claude --continue || claude" "${outputLogPath}"`);
-    }
+    // Start Claude with output logging and automatic Node version retry
+    startClaudeWithRetry();
     
     // Start file monitoring (this will also handle continuous monitoring)
     startFileMonitoring();
@@ -859,6 +843,90 @@ function startClaude() {
     console.error('Failed to start Claude:', error);
     vscode.window.showErrorMessage(`Failed to start Claude: ${error}`);
   }
+}
+
+function startClaudeWithRetry() {
+  if (!terminal) return;
+  
+  const os = require('os');
+  
+  // Potential Node versions to try if nodenv fails
+  const attemptNodeVersions = ["20.19.3", "16.0.0"];
+  
+  // Set PATH to prioritize global node version and ignore local version managers
+  const globalNodeSetup = 'export NODENV_VERSION="" NODEENV_VERSION="" NVM_DIR="" NODE_VERSION_PREFIX=""';
+  
+  // Build retry commands for each Node version
+  let retryCommands: string[] = [];
+  
+  for (const nodeVersion of attemptNodeVersions) {
+    const nodeSetup = `export NODENV_VERSION="${nodeVersion}" NODEENV_VERSION="${nodeVersion}" NVM_DIR="" NODE_VERSION_PREFIX=""`;
+    retryCommands.push(`${nodeSetup} && claude --continue || claude`);
+  }
+  
+  // Create the full command with automatic retry logic
+  let fullCommand: string;
+  
+  if (os.platform() === 'darwin') {
+    // macOS: use script command with retry logic
+    const bashCommands = [
+      `${globalNodeSetup} && claude --continue || claude`,
+      ...retryCommands
+    ];
+    
+    // Create a bash script that tries each command until one succeeds
+    const bashScript = bashCommands.map((cmd, index) => {
+      if (index === 0) {
+        return `echo "Trying default node setup..." && (${cmd})`;
+      } else {
+        return `echo "Trying Node version ${attemptNodeVersions[index - 1]}..." && (${cmd})`;
+      }
+    }).join(' || ');
+    
+    fullCommand = `script -q "${outputLogPath}" bash -c '${bashScript}'`;
+    
+  } else if (os.platform() === 'win32') {
+    // Windows: use PowerShell with retry logic
+    const powershellCommands = [
+      `$env:NODENV_VERSION=""; $env:NODE_VERSION_PREFIX=""; claude --continue; if (!$?) { claude }`,
+      ...attemptNodeVersions.map(version => 
+        `$env:NODENV_VERSION="${version}"; $env:NODE_VERSION_PREFIX="${version}"; claude --continue; if (!$?) { claude }`
+      )
+    ];
+    
+    const powershellScript = powershellCommands.map((cmd, index) => {
+      if (index === 0) {
+        return `Write-Host "Trying default node setup..."; ${cmd}`;
+      } else {
+        return `Write-Host "Trying Node version ${attemptNodeVersions[index - 1]}..."; ${cmd}`;
+      }
+    }).join('; if (!$?) { ');
+    
+    // Close all the if statements
+    const closingBraces = '}; '.repeat(powershellCommands.length - 1);
+    
+    fullCommand = `(${powershellScript}${closingBraces}) | Tee-Object -FilePath "${outputLogPath}"`;
+    
+  } else {
+    // Linux: use script command with retry logic
+    const bashCommands = [
+      `${globalNodeSetup} && claude --continue || claude`,
+      ...retryCommands
+    ];
+    
+    const bashScript = bashCommands.map((cmd, index) => {
+      if (index === 0) {
+        return `echo "Trying default node setup..." && (${cmd})`;
+      } else {
+        return `echo "Trying Node version ${attemptNodeVersions[index - 1]}..." && (${cmd})`;
+      }
+    }).join(' || ');
+    
+    fullCommand = `script -q -c '${bashScript}' "${outputLogPath}"`;
+  }
+  
+  console.log('Executing Claude startup command with Node version retry logic');
+  terminal.sendText(fullCommand);
 }
 
 function setupOutputLogging() {

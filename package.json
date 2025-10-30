@@ -2,7 +2,7 @@
   "name": "claude-auto-responder",
   "displayName": "Claude Auto Responder",
   "description": "Automatically respond to Claude CLI prompts in VS Code terminal",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "publisher": "kurokawamomo",
   "repository": {
     "type": "git",
